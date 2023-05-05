@@ -11,4 +11,5 @@ COPY --from=builder /bin/matterbridge /bin/matterbridge
 RUN mkdir /etc/matterbridge \
   && touch /etc/matterbridge/matterbridge.toml \
   && ln -sf /matterbridge.toml /etc/matterbridge/matterbridge.toml
+RUN go mod vendor
 ENTRYPOINT ["/bin/matterbridge", "-conf", "/etc/matterbridge/matterbridge.toml"]
