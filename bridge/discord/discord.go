@@ -6,9 +6,9 @@ import (
 	"strings"
 	"sync"
 
-	"bridge"
-	"bridge/config"
-	"bridge/discord/transmitter"
+	"/go/src/matterbridge/bridge"
+	"/go/src/matterbridge/bridge/config"
+	"/go/src/matterbridge/bridge/discord/transmitter"
 	"github.com/42wim/matterbridge/bridge/helper"
 	"github.com/bwmarrin/discordgo"
 	lru "github.com/hashicorp/golang-lru"
