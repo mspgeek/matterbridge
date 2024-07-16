@@ -42,7 +42,7 @@ const (
 	SuperSubscript                                // Super- and subscript support: 2^10^, H~2~O.
 	EmptyLinesBreakList                           // 2 empty lines break out of list
 	Includes                                      // Support including other files.
-	Mmark                                         // Support Mmark syntax, see https://mmark.nl/syntax
+	Mmark                                         // Support Mmark syntax, see https://mmark.miek.nl/post/syntax/
 
 	CommonExtensions Extensions = NoIntraEmphasis | Tables | FencedCode |
 		Autolink | Strikethrough | SpaceHeadings | HeadingIDs |
@@ -56,7 +56,7 @@ const (
 )
 
 // for each character that triggers a response when parsing inline data.
-type inlineParser func(p *Parser, data []byte, offset int) (int, ast.Node)
+type InlineParser func(p *Parser, data []byte, offset int) (int, ast.Node)
 
 // ReferenceOverrideFunc is expected to be called with a reference string and
 // return either a valid Reference type that the reference string maps to or
@@ -98,7 +98,7 @@ type Parser struct {
 
 	refs           map[string]*reference
 	refsRecord     map[string]struct{}
-	inlineCallback [256]inlineParser
+	inlineCallback [256]InlineParser
 	nesting        int
 	maxNesting     int
 	insideLink     bool
@@ -181,6 +181,12 @@ func NewWithExtensions(extension Extensions) *Parser {
 	return &p
 }
 
+func (p *Parser) RegisterInline(n byte, fn InlineParser) InlineParser {
+	prev := p.inlineCallback[n]
+	p.inlineCallback[n] = fn
+	return prev
+}
+
 func (p *Parser) getRef(refid string) (ref *reference, found bool) {
 	if p.ReferenceOverride != nil {
 		r, overridden := p.ReferenceOverride(refid)
@@ -206,13 +212,13 @@ func (p *Parser) isFootnote(ref *reference) bool {
 	return ok
 }
 
-func (p *Parser) finalize(block ast.Node) {
+func (p *Parser) Finalize(block ast.Node) {
 	p.tip = block.GetParent()
 }
 
 func (p *Parser) addChild(node ast.Node) ast.Node {
 	for !canNodeContain(p.tip, node) {
-		p.finalize(p.tip)
+		p.Finalize(p.tip)
 	}
 	ast.AppendChild(p.tip, node)
 	p.tip = node
@@ -239,6 +245,18 @@ func canNodeContain(n ast.Node, v ast.Node) bool {
 		_, ok := v.(*ast.TableCell)
 		return ok
 	}
+	// for nodes implemented outside of ast package, allow them
+	// to implement this logic via CanContain interface
+	if o, ok := n.(ast.CanContain); ok {
+		return o.CanContain(v)
+	}
+	// for container nodes outside of ast package default to true
+	// because false is a bad default
+	typ := fmt.Sprintf("%T", n)
+	customNode := !strings.HasPrefix(typ, "*ast.")
+	if customNode {
+		return n.AsLeaf() == nil
+	}
 	return false
 }
 
@@ -248,7 +266,7 @@ func (p *Parser) closeUnmatchedBlocks() {
 	}
 	for p.oldTip != p.lastMatchedContainer {
 		parent := p.oldTip.GetParent()
-		p.finalize(p.oldTip)
+		p.Finalize(p.oldTip)
 		p.oldTip = parent
 	}
 	p.allClosed = true
@@ -273,10 +291,14 @@ type Reference struct {
 // You can then convert AST to html using html.Renderer, to some other format
 // using a custom renderer or transform the tree.
 func (p *Parser) Parse(input []byte) ast.Node {
-	p.block(input)
+	// the code only works with Unix CR newlines so to make life easy for
+	// callers normalize newlines
+	input = NormalizeNewlines(input)
+
+	p.Block(input)
 	// Walk the tree and finish up some of unfinished blocks
 	for p.tip != nil {
-		p.finalize(p.tip)
+		p.Finalize(p.tip)
 	}
 	// Walk the tree again and process inline markdown in each block
 	ast.WalkFunc(p.Doc, func(node ast.Node, entering bool) ast.WalkStatus {
@@ -322,8 +344,8 @@ func (p *Parser) parseRefsToAST() {
 		IsFootnotesList: true,
 		ListFlags:       ast.ListTypeOrdered,
 	}
-	p.addBlock(&ast.Footnotes{})
-	block := p.addBlock(list)
+	p.AddBlock(&ast.Footnotes{})
+	block := p.AddBlock(list)
 	flags := ast.ListItemBeginningOfList
 	// Note: this loop is intentionally explicit, not range-form. This is
 	// because the body of the loop will append nested footnotes to p.notes and
@@ -338,7 +360,7 @@ func (p *Parser) parseRefsToAST() {
 		listItem.RefLink = ref.link
 		if ref.hasBlock {
 			flags |= ast.ListItemContainsBlock
-			p.block(ref.title)
+			p.Block(ref.title)
 		} else {
 			p.Inline(block, ref.title)
 		}
@@ -660,7 +682,7 @@ gatherLines:
 
 		// if it is an empty line, guess that it is part of this item
 		// and move on to the next line
-		if p.isEmpty(data[blockEnd:i]) > 0 {
+		if IsEmpty(data[blockEnd:i]) > 0 {
 			containsBlankLine = true
 			blockEnd = i
 			continue
@@ -882,4 +904,30 @@ func slugify(in []byte) []byte {
 func isListItem(d ast.Node) bool {
 	_, ok := d.(*ast.ListItem)
 	return ok
+}
+
+func NormalizeNewlines(d []byte) []byte {
+	res := make([]byte, len(d))
+	copy(res, d)
+	d = res
+	wi := 0
+	n := len(d)
+	for i := 0; i < n; i++ {
+		c := d[i]
+		// 13 is CR
+		if c != 13 {
+			d[wi] = c
+			wi++
+			continue
+		}
+		// replace CR (mac / win) with LF (unix)
+		d[wi] = 10
+		wi++
+		if i < n-1 && d[i+1] == 10 {
+			// this was CRLF, so skip the LF
+			i++
+		}
+
+	}
+	return d[:wi]
 }

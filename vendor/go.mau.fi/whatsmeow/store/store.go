@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	waProto "go.mau.fi/whatsmeow/binary/proto"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/util/keys"
@@ -55,6 +57,7 @@ type AppStateSyncKey struct {
 type AppStateSyncKeyStore interface {
 	PutAppStateSyncKey(id []byte, key AppStateSyncKey) error
 	GetAppStateSyncKey(id []byte) (*AppStateSyncKey, error)
+	GetLatestAppStateSyncKeyID() ([]byte, error)
 }
 
 type AppStateMutationMAC struct {
@@ -137,6 +140,8 @@ type Device struct {
 	Platform     string
 	BusinessName string
 	PushName     string
+
+	FacebookUUID uuid.UUID
 
 	Initialized   bool
 	Identities    IdentityStore
