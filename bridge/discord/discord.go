@@ -348,7 +348,7 @@ func (b *Bdiscord) Send(msg config.Message) (string, error) {
 	if msg.Event == config.EventMsgDelete || msg.Event == config.EventFileDelete {
 		return b.handleEventBotUser(&msg, channelID)
 	}
-	b.Log.Infof("Sending the discord message via thandle event webhook using %s", msg.ParentID)
+	b.Log.Debugf("Sending message to thread %s via webhook", msg.ParentID)
 	return b.handleEventWebhook(&msg, channelID, msg.ParentID)
 }
 

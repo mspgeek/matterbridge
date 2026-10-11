@@ -1,8 +1,6 @@
 package bdiscord
 
 import (
-	"encoding/json"
-	"log"
 	"strings"
 	"time"
 
@@ -10,17 +8,6 @@ import (
 	"github.com/mspgeek-community/matterbridge/bridge/config"
 	"github.com/mspgeek-community/matterbridge/bridge/helper"
 )
-
-func logObjects(message string, objects ...interface{}) {
-	for _, obj := range objects {
-		jsonBytes, err := json.Marshal(obj)
-		if err != nil {
-			log.Printf("%s: error marshalling object: %v\n", message, err)
-			continue
-		}
-		log.Printf("%s: %s\n", message, string(jsonBytes))
-	}
-}
 
 func (b *Bdiscord) messageDelete(s *discordgo.Session, m *discordgo.MessageDelete) { //nolint:unparam
 	if m.GuildID != b.guildID {
@@ -67,7 +54,7 @@ func (b *Bdiscord) messageDeleteBulk(s *discordgo.Session, m *discordgo.MessageD
 }
 
 func (b *Bdiscord) messageEvent(s *discordgo.Session, m *discordgo.Event) {
-	logObjects("== Receiving event:", m)
+	b.Log.Debugf("== Receiving event: %s %s", m.Type, m.RawData)
 }
 
 func (b *Bdiscord) messageTyping(s *discordgo.Session, m *discordgo.TypingStart) {
@@ -261,12 +248,6 @@ func (b *Bdiscord) relayMessage(m *discordgo.MessageCreate, edit bool) {
 				authorName := "@" + b.getNick(m.ReferencedMessage.Author, m.GuildID)
 				authorIcon := "https://cdn.discordapp.com/avatars/" + m.ReferencedMessage.Author.ID + "/" + m.ReferencedMessage.Author.Avatar + ".jpg"
 				originalMessageContent := m.ReferencedMessage.Content
-				jsonBytes, err := json.MarshalIndent(m.ReferencedMessage, "", "  ")
-				if err != nil {
-					b.Log.Errorf("Failed to marshal MessageCreate to JSON: %v", err)
-				} else {
-					b.Log.Debugf("This is the entire object:\n %s", string(jsonBytes))
-				}
 				urls := make([]string, len(m.ReferencedMessage.Attachments))
 				for i, attachment := range m.ReferencedMessage.Attachments {
 					urls[i] = attachment.URL

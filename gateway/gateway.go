@@ -499,6 +499,10 @@ func (gw *Gateway) modifyMessage(msg *config.Message) {
 		msg.Gateway = gw.Name
 	}
 }
+
+// tsRefRE matches thread references ("<#TS:1700000000.000100>").
+var tsRefRE = regexp.MustCompile(`<#TS:([0-9]+\.[0-9]+)>`)
+
 func (gw *Gateway) ReplaceTSString(
 	canonicalParentMsgID string,
 	canonicalThreadMsgID string,
@@ -507,10 +511,8 @@ func (gw *Gateway) ReplaceTSString(
 	channel *config.ChannelInfo,
 
 ) string {
-	re := regexp.MustCompile("<#TS:([0-9]+\\.[0-9]+)>")
-	gw.logger.Debugf("WE WILL BE CONVERTING: %s", Text)
-	Text = re.ReplaceAllStringFunc(Text, func(s string) string {
-		gw.logger.Infof("canonicalThreadMsgID: %s", canonicalThreadMsgID)
+	Text = tsRefRE.ReplaceAllStringFunc(Text, func(s string) string {
+		gw.logger.Debugf("Replacing thread reference with canonicalThreadMsgID %s", canonicalThreadMsgID)
 		var destMsgID string
 		if strings.Contains(canonicalThreadMsgID, "slack") {
 			destMsgID = gw.getDestMsgID(canonicalThreadMsgID, dest, channel)
