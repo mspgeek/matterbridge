@@ -168,3 +168,24 @@ func TestSlackMentionsUseUserRefs(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "<@U1>", mention)
 }
+
+// During startup the connected event starts a channel refresh while the router
+// already calls JoinChannel. JoinChannel must wait for that refresh instead of
+// failing with "channel not found", which removed the Slack bridge.
+func TestJoinChannelWaitsForRunningRefresh(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":true,"channels":[{"id":"C1","name":"general","is_channel":true,"is_member":true}],"response_metadata":{"next_cursor":""}}`)
+	}))
+	defer server.Close()
+	logger := logrus.New()
+	logger.SetOutput(ioutil.Discard)
+	sc := slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))
+	b := &Bslack{sc: sc, channels: newChannelManager(logrus.NewEntry(logger), sc)}
+
+	go b.channels.populateChannels(true) // the connected event's refresh
+	time.Sleep(50 * time.Millisecond)
+
+	assert.NoError(t, b.JoinChannel(config.ChannelInfo{Name: "general"}))
+}

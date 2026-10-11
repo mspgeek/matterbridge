@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/mspgeek-community/matterbridge/bridge"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
@@ -584,4 +585,14 @@ func TestResolveUserRefs(t *testing.T) {
 	resolveRefs(&msg2, other)
 	assert.Equal(t, "@Mendy Green [MSPGeek]] yo @Some One @typed", msg2.Text)
 	assert.Equal(t, "cc "+ref, src.Extra["file"][0].(config.FileInfo).Comment)
+}
+
+// A bridge removed after failing to start may still deliver messages; the
+// router used to dereference the missing bridge and crash.
+func TestRouterDropsMessagesFromRemovedBridge(t *testing.T) {
+	r := maketestRouter(testconfig2)
+	go r.handleReceive()
+	r.Message <- config.Message{Account: "slack.removed", Channel: "general", Text: "hi", Username: "x"}
+	r.Message <- config.Message{Account: "slack.removed", Event: config.EventUserTyping, Channel: "general"}
+	time.Sleep(100 * time.Millisecond) // a panic in handleReceive would abort the test binary
 }

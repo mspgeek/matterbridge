@@ -182,6 +182,13 @@ func (b *Bslack) JoinChannel(channel config.ChannelInfo) error {
 
 	channelInfo, err := b.channels.getChannel(channel.Name)
 	if err != nil {
+		// populateChannels(false) skips the fetch while another refresh is
+		// running, e.g. the one started by the connected event during
+		// startup. Wait for it and look again.
+		b.channels.populateChannels(true)
+		channelInfo, err = b.channels.getChannel(channel.Name)
+	}
+	if err != nil {
 		return fmt.Errorf("could not join channel: %#v", err)
 	}
 
