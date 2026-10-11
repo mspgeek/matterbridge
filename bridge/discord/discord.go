@@ -406,7 +406,6 @@ func (b *Bdiscord) handleEventBotUser(msg *config.Message, channelID string) (st
 	}
 
 	msg.Text = helper.ClipMessage(msg.Text, MessageLength, b.GetString("MessageClipped"))
-	msg.Text = b.replaceUserMentions(msg.Text)
 
 	// Edit message
 	if msg.ID != "" {

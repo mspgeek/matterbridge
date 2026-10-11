@@ -176,6 +176,13 @@ func slackDisplayName(user *slack.User) string {
 	return user.Name
 }
 
+// ReplaceTypedMentions links "@name" typed as plain text (not a real mention)
+// to the matching user. The gateway runs it before resolving user references,
+// so a reference's "@Name" fallback is never guessed again.
+func (b *Bslack) ReplaceTypedMentions(text string) string {
+	return b.replaceOutgoingMentions(text)
+}
+
 // UserMention returns the Slack mention of the user with these names (a user
 // reference from another platform).
 func (b *Bslack) UserMention(names []string) (string, bool) {

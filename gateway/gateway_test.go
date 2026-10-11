@@ -537,6 +537,13 @@ func (f fakeMentioner) ChannelMention(name string) (string, bool) {
 	return "<#" + id + ">", ok
 }
 
+func (f fakeMentioner) ReplaceTypedMentions(text string) string {
+	return helper.ReplaceMentions(text, func(name string) (string, bool) {
+		id, ok := f.users.Lookup(name)
+		return "<@" + id + ">", ok
+	})
+}
+
 func (f fakeMentioner) UserMention(names []string) (string, bool) {
 	id, ok := helper.ResolveUserByNames(f.users, names)
 	return "<@" + id + ">", ok
@@ -595,4 +602,30 @@ func TestRouterDropsMessagesFromRemovedBridge(t *testing.T) {
 	r.Message <- config.Message{Account: "slack.removed", Channel: "general", Text: "hi", Username: "x"}
 	r.Message <- config.Message{Account: "slack.removed", Event: config.EventUserTyping, Channel: "general"}
 	time.Sleep(100 * time.Millisecond) // a panic in handleReceive would abort the test binary
+}
+
+// Reproduces a real case: a Slack mention of "Kelvin Tegelaar - MVP/PoshSpice"
+// (whose short username matches a different Discord user) arrived on Discord
+// as "@KelvinTegelaar MVP/PoshSpice": the reference was not linked and its
+// "@Name" fallback was then partially matched by the typed-mention pass.
+func TestUserRefLinksDespiteOtherNameMatches(t *testing.T) {
+	users := helper.NameIndex{}
+	users.Add("111", "KelvinTegelaar")
+	users.Add("222", "kelvin") // someone else on Discord
+	users.Add("333", "Ashe")
+	discord := &bridge.Bridge{Account: "discord.test", Bridger: fakeMentioner{users: users}}
+
+	kelvin := helper.UserRef("Kelvin Tegelaar - MVP/PoshSpice", "Kelvin Tegelaar - MVP/PoshSpice", "Kelvin Tegelaar", "kelvin")
+	ashe := helper.UserRef("Ashe", "ashe")
+	msg := config.Message{Account: "slack.test", Text: kelvin + " " + ashe + " did a PR"}
+	resolveRefs(&msg, discord)
+	assert.Equal(t, "<@111> <@333> did a PR", msg.Text)
+
+	// An unknown user's fallback text is not guessed again.
+	nobody := helper.UserRef("Kelvin Tegelaar - Someone Else", "zzz")
+	users2 := helper.NameIndex{}
+	users2.Add("111", "Kelvin Tegelaar")
+	msg = config.Message{Account: "slack.test", Text: "hi " + nobody}
+	resolveRefs(&msg, &bridge.Bridge{Account: "discord.test", Bridger: fakeMentioner{users: users2}})
+	assert.Equal(t, "hi @Kelvin Tegelaar - Someone Else", msg.Text)
 }

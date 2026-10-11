@@ -68,19 +68,15 @@ func decodeUserRef(match string) []string {
 	return names
 }
 
-// ResolveUserByNames looks up every name in idx and returns the user ID when
-// the names that match all point to the same user.
+// ResolveUserByNames returns the user ID for the first of names (most
+// specific first: display name, real name, username) that matches exactly one
+// user in idx. A short username matching some other user does not override a
+// match on the display or real name.
 func ResolveUserByNames(idx NameIndex, names []string) (string, bool) {
-	found := ""
 	for _, name := range names {
-		id, ok := idx.Lookup(name)
-		if !ok {
-			continue
+		if id, ok := idx.Lookup(name); ok {
+			return id, true
 		}
-		if found != "" && found != id {
-			return "", false // names point to different users
-		}
-		found = id
 	}
-	return found, found != ""
+	return "", false
 }

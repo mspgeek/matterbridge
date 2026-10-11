@@ -37,8 +37,11 @@ func TestResolveUserByNames(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "D1", id)
 
-	_, ok = ResolveUserByNames(idx, []string{"Mendy Green", "jsmith"})
-	assert.False(t, ok, "names pointing to different users are not linked")
+	// The most specific name wins; a later name matching someone else does not
+	// block the link.
+	id, ok = ResolveUserByNames(idx, []string{"Mendy Green", "jsmith"})
+	assert.True(t, ok)
+	assert.Equal(t, "D1", id)
 
 	_, ok = ResolveUserByNames(idx, []string{"nobody"})
 	assert.False(t, ok)

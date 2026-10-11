@@ -123,7 +123,6 @@ func (b *Bdiscord) handleEventWebhook(msg *config.Message, channelID string, Par
 	}
 
 	msg.Text = helper.ClipMessage(msg.Text, MessageLength, b.GetString("MessageClipped"))
-	msg.Text = b.replaceUserMentions(msg.Text)
 	// discord username must be [0..32] max
 	if len(msg.Username) > 32 {
 		msg.Username = msg.Username[0:32]

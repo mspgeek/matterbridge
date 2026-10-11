@@ -544,6 +544,12 @@ type channelMentioner interface {
 	ChannelMention(name string) (string, bool)
 }
 
+// typedMentionReplacer is implemented by bridges that link "@name" typed as
+// plain text.
+type typedMentionReplacer interface {
+	ReplaceTypedMentions(text string) string
+}
+
 // userMentioner is implemented by bridges that can mention users by name.
 type userMentioner interface {
 	UserMention(names []string) (string, bool)
@@ -561,8 +567,17 @@ func resolveRefs(msg *config.Message, dest *bridge.Bridge) {
 	if mentioner, ok := dest.Bridger.(userMentioner); ok {
 		resolveUser = mentioner.UserMention
 	}
+	var typedMentions func(string) string
+	if replacer, ok := dest.Bridger.(typedMentionReplacer); ok && msg.Account != dest.Account {
+		typedMentions = replacer.ReplaceTypedMentions
+	}
 	resolve := func(text string) string {
 		text = helper.ReplaceChannelRefs(text, resolveChannel)
+		// Typed "@name" text first: user references are skipped by it, and
+		// their "@Name" fallback must not be guessed again afterwards.
+		if typedMentions != nil {
+			text = typedMentions(text)
+		}
 		return helper.ReplaceUserRefs(text, resolveUser)
 	}
 	msg.Text = resolve(msg.Text)

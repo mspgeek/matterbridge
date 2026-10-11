@@ -172,6 +172,13 @@ func (b *Bdiscord) ChannelIDByName(name string) string {
 	return b.getChannelID(name)
 }
 
+// ReplaceTypedMentions links "@name" typed as plain text (not a real mention)
+// to the matching member. The gateway runs it before resolving user
+// references, so a reference's "@Name" fallback is never guessed again.
+func (b *Bdiscord) ReplaceTypedMentions(text string) string {
+	return b.replaceUserMentions(text)
+}
+
 // UserMention returns the Discord mention of the member with these names (a
 // user reference from another platform).
 func (b *Bdiscord) UserMention(names []string) (string, bool) {
