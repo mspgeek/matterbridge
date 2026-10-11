@@ -1,11 +1,15 @@
 package bslack
 
 import (
+	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/mspgeek-community/matterbridge/bridge"
+	"github.com/mspgeek-community/matterbridge/bridge/config"
 	"github.com/sirupsen/logrus"
+	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,4 +37,16 @@ func TestExtractTopicOrPurpose(t *testing.T) {
 		assert.Equalf(t, tc.wantChangeType, gotChangeType, "This testcase failed: %s", name)
 		assert.Equalf(t, tc.wantOutput, gotOutput, "This testcase failed: %s", name)
 	}
+}
+
+func TestIsFreshEdit(t *testing.T) {
+	ts := func(d time.Duration) *slack.Edited {
+		return &slack.Edited{Timestamp: fmt.Sprintf("%d.000100", time.Now().Add(-d).Unix())}
+	}
+	assert.False(t, isFreshEdit(nil))
+	assert.False(t, isFreshEdit(&slack.Edited{}))
+	assert.False(t, isFreshEdit(&slack.Edited{Timestamp: "garbage"}))
+	assert.True(t, isFreshEdit(ts(10*time.Second)))
+	assert.False(t, isFreshEdit(ts(config.EditMaxAge+time.Minute)))
+	assert.False(t, isFreshEdit(ts(30*24*time.Hour)))
 }

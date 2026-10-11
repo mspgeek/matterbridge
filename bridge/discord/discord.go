@@ -18,6 +18,7 @@ import (
 const (
 	MessageLength = 1950
 	cFileUpload   = "file_upload"
+	cEdit         = "edit "
 )
 
 type Bdiscord struct {

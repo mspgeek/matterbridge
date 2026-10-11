@@ -47,7 +47,16 @@ type Message struct {
 	ID        string    `json:"id"`
 	Extra     map[string][]interface{}
 	ThreadID  string `json:"ThreadID"`
+	// Edit marks an edit of an earlier message. The gateway drops an edit when
+	// it cannot find the bridged copy instead of posting it as a new message.
+	Edit bool `json:"edit,omitempty"`
 }
+
+// EditMaxAge is how old an edit timestamp may be for an update event to be
+// treated as a fresh edit. Platforms also send update events for unrelated
+// changes (threads, pins, link previews, reply counts) that carry the
+// message's original edit timestamp.
+const EditMaxAge = 5 * time.Minute
 
 func (m Message) ParentNotFound() bool {
 	return m.ParentID == ParentIDNotFound

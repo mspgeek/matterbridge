@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"strconv"
 	"time"
 
 	"github.com/mspgeek-community/matterbridge/bridge/config"
@@ -222,6 +223,14 @@ func (b *Bslack) skipMessageEvent(ev *slack.MessageEvent) bool {
 		hasOurCallbackID = ok && block.BlockID == "matterbridge_"+b.uuid
 	}
 
+	// Slack sends message_changed for link previews, reply counts and other
+	// metadata as well as for edits. Only relay fresh edits; the deleted
+	// thread starter placeholder is handled as a delete.
+	if ev.SubType == sMessageChanged && ev.SubMessage != nil &&
+		ev.SubMessage.Text != sDeletedThreadStarter && !isFreshEdit(ev.SubMessage.Edited) {
+		return true
+	}
+
 	if ev.SubMessage != nil {
 		// It seems ev.SubMessage.Edited == nil when slack unfurls.
 		// Do not forward these messages. See Github issue #266.
@@ -250,6 +259,19 @@ func (b *Bslack) skipMessageEvent(ev *slack.MessageEvent) bool {
 		return b.filesCached(ev.Files)
 	}
 	return false
+}
+
+// isFreshEdit reports whether a Slack edit marker belongs to an edit made just
+// now rather than to an old edit carried along by a metadata update.
+func isFreshEdit(edited *slack.Edited) bool {
+	if edited == nil || edited.Timestamp == "" {
+		return false
+	}
+	secs, err := strconv.ParseFloat(edited.Timestamp, 64)
+	if err != nil {
+		return false
+	}
+	return time.Since(time.Unix(int64(secs), 0)) <= config.EditMaxAge
 }
 
 func (b *Bslack) filesCached(files []slack.File) bool {
@@ -340,10 +362,11 @@ func (b *Bslack) handleStatusEvent(ev *slack.MessageEvent, rmsg *config.Message)
 	case sMessageChanged:
 		rmsg.Text = ev.SubMessage.Text
 		// handle deleted thread starting messages
-		if ev.SubMessage.Text == "This message was deleted." {
+		if ev.SubMessage.Text == sDeletedThreadStarter {
 			rmsg.Event = config.EventMsgDelete
 			return true
 		}
+		rmsg.Edit = true
 	case sMessageDeleted:
 		rmsg.Text = config.EventMsgDelete
 		rmsg.Event = config.EventMsgDelete

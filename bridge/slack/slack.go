@@ -43,25 +43,26 @@ type Bslack struct {
 }
 
 const (
-	sHello               = "hello"
-	sChannelJoin         = "channel_join"
-	sChannelLeave        = "channel_leave"
-	sChannelJoined       = "channel_joined"
-	sMemberJoined        = "member_joined_channel"
-	sMessageChanged      = "message_changed"
-	sMessageDeleted      = "message_deleted"
-	sSlackAttachment     = "slack_attachment"
-	sPinnedItem          = "pinned_item"
-	sUnpinnedItem        = "unpinned_item"
-	sChannelTopic        = "channel_topic"
-	sChannelPurpose      = "channel_purpose"
-	sFileComment         = "file_comment"
-	sMeMessage           = "me_message"
-	sUserTyping          = "user_typing"
-	sLatencyReport       = "latency_report"
-	sSystemUser          = "system"
-	sSlackBotUser        = "slackbot"
-	cfileDownloadChannel = "file_download_channel"
+	sHello                = "hello"
+	sChannelJoin          = "channel_join"
+	sChannelLeave         = "channel_leave"
+	sChannelJoined        = "channel_joined"
+	sMemberJoined         = "member_joined_channel"
+	sMessageChanged       = "message_changed"
+	sDeletedThreadStarter = "This message was deleted."
+	sMessageDeleted       = "message_deleted"
+	sSlackAttachment      = "slack_attachment"
+	sPinnedItem           = "pinned_item"
+	sUnpinnedItem         = "unpinned_item"
+	sChannelTopic         = "channel_topic"
+	sChannelPurpose       = "channel_purpose"
+	sFileComment          = "file_comment"
+	sMeMessage            = "me_message"
+	sUserTyping           = "user_typing"
+	sLatencyReport        = "latency_report"
+	sSystemUser           = "system"
+	sSlackBotUser         = "slackbot"
+	cfileDownloadChannel  = "file_download_channel"
 
 	tokenConfig           = "Token"
 	incomingWebhookConfig = "WebhookBindAddress"
@@ -536,6 +537,7 @@ func (b *Bslack) uploadFile(msg *config.Message, channelID string) (string, erro
 	}
 	return messageID, nil
 }
+
 // uploadedFileMessageID returns the timestamp of the message that shared an
 // uploaded file in channelID. Sharing happens asynchronously after the upload
 // completes, so retry briefly.
@@ -610,7 +612,7 @@ func (b *Bslack) prepareMessageOptions(msg *config.Message) []slack.MsgOption {
 			// Construct the normal text message, including the view message link if applicable
 			msg.Text = splitText[2] + msglink
 		}
-	}				
+	}
 
 	var opts []slack.MsgOption
 	opts = append(opts,

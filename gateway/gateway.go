@@ -678,6 +678,13 @@ func (gw *Gateway) SendMessage(
 		msg.ID = gw.getDestMsgID(rmsg.Protocol+" "+rmsg.ID, dest, channel)
 	}
 
+	// An edit of a message we have no bridged copy of must not be posted as a
+	// new message: that replays old messages.
+	if rmsg.Edit && msg.ID == "" {
+		gw.logger.Debugf("Dropping edit of %s %s for %s: bridged message not found", rmsg.Protocol, rmsg.ID, dest.Account)
+		return "", nil
+	}
+
 	// for api we need originchannel as channel
 	if dest.Protocol == apiProtocol {
 		msg.Channel = rmsg.Channel

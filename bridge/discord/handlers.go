@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
@@ -95,15 +96,26 @@ func (b *Bdiscord) messageUpdate(s *discordgo.Session, m *discordgo.MessageUpdat
 	if b.GetBool("EditDisable") {
 		return
 	}
-	// only when message is actually edited
-	if m.Message.EditedTimestamp != nil {
-		b.Log.Debugf("Sending edit message")
-		m.Content += b.GetString("EditSuffix")
-		msg := &discordgo.MessageCreate{
-			Message: m.Message,
-		}
-		b.messageCreate(s, msg)
+	// Discord also sends MESSAGE_UPDATE for thread creation, pins, embeds and
+	// thread counters. Those keep the old edited_timestamp, so only relay
+	// updates whose edit happened just now, and each edit once.
+	if m.Message == nil || m.EditedTimestamp == nil {
+		return
 	}
+	if age := time.Since(*m.EditedTimestamp); age > config.EditMaxAge {
+		b.Log.Debugf("Ignoring update of message %s: last edit was %s ago", m.ID, age.Round(time.Second))
+		return
+	}
+	editKey := cEdit + m.ID + " " + m.EditedTimestamp.String()
+	if b.cache.Contains(editKey) {
+		b.Log.Debugf("Ignoring repeated update of message %s", m.ID)
+		return
+	}
+	b.cache.Add(editKey, true)
+
+	b.Log.Debugf("Sending edit message")
+	m.Content += b.GetString("EditSuffix")
+	b.relayMessage(&discordgo.MessageCreate{Message: m.Message}, true)
 }
 
 func (b *Bdiscord) replaceMentionsWithUsernames(m *discordgo.MessageCreate) string {
@@ -158,6 +170,10 @@ func (b *Bdiscord) messageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 		b.Log.Debugf("Ignoring messageCreate because it originates from a different guild")
 		return
 	}
+	b.relayMessage(m, false)
+}
+
+func (b *Bdiscord) relayMessage(m *discordgo.MessageCreate, edit bool) {
 	var err error
 
 	// partial updates may not carry an author
@@ -186,6 +202,7 @@ func (b *Bdiscord) messageCreate(s *discordgo.Session, m *discordgo.MessageCreat
 		Avatar:  "https://cdn.discordapp.com/avatars/" + m.Author.ID + "/" + m.Author.Avatar + ".jpg",
 		UserID:  m.Author.ID,
 		ID:      m.ID,
+		Edit:    edit,
 	}
 
 	b.Log.Debugf("== Receiving event %#v", m.Message)
