@@ -35,8 +35,7 @@ type Bslack struct {
 
 	channels *channels
 	//discord Fields for channelauto replaceChannelByName
-	discordConnection *discordgo.Session
-	dChannels         []*discordgo.Channel
+	dChannels []*discordgo.Channel
 
 	users  *users
 	legacy bool
@@ -105,6 +104,29 @@ func (b *Bslack) Command(cmd string) string {
 	return ""
 }
 
+// loadDiscordChannels fetches the Discord channel list used to turn Slack
+// channel links into Discord channel mentions. It only uses the REST API: a
+// gateway login here was a second permanent Discord session per Slack
+// connect. Failure only disables the channel conversion.
+func (b *Bslack) loadDiscordChannels() {
+	token, server := b.GetString("DiscordToken"), b.GetString("DiscordServer")
+	if token == "" || server == "" {
+		return
+	}
+	dg, err := discordgo.New("Bot " + strings.TrimPrefix(token, "Bot "))
+	if err != nil {
+		b.Log.Warnf("Discord channel conversion disabled: %s", err)
+		return
+	}
+	channels, err := dg.GuildChannels(strings.TrimPrefix(server, "ID:"))
+	if err != nil {
+		b.Log.Warnf("Discord channel conversion disabled, could not list channels of DiscordServer %s: %s", server, err)
+		return
+	}
+	b.Log.Infof("Loaded %d Discord channels for channel conversion", len(channels))
+	b.dChannels = channels
+}
+
 func (b *Bslack) Connect() error {
 	b.RLock()
 	defer b.RUnlock()
@@ -124,32 +146,7 @@ func (b *Bslack) Connect() error {
 		b.rtm = b.sc.NewRTM()
 		go b.rtm.ManageConnection()
 		go b.handleSlack()
-		b.Log.Info("Connecting to discord for auto channel replacements.")
-		token := b.GetString("DiscordToken")
-		discordConnection, err := discordgo.New("Bot " + token)
-		if err != nil {
-			fmt.Println("Error connecting")
-
-			return err
-		}
-
-		err = discordConnection.Open()
-		if err != nil {
-			fmt.Println("Error opening discord connection")
-
-			return err
-		}
-		b.Log.Info("Connected to discord. Listing Channels.")
-
-		dChannels, err := discordConnection.GuildChannels(b.GetString("DiscordServer"))
-		if err != nil {
-			fmt.Println("Error Listing discord channels. Channel auto remap wont work.")
-			return err
-		}
-		b.Log.Info(dChannels)
-
-		b.discordConnection = discordConnection
-		b.dChannels = dChannels
+		b.loadDiscordChannels()
 
 		return nil
 	}
