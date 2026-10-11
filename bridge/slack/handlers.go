@@ -159,7 +159,10 @@ func (b *Bslack) handleSlackClient(messages chan *config.Message) {
 			// well as the information for the channel that we joined as this
 			// should now tell that we are a member of it.
 			b.channels.registerChannel(ev.Channel)
+		case *slack.ConnectingEvent:
+			b.Log.Infof("Connecting to Slack (attempt %d)", ev.Attempt)
 		case *slack.ConnectedEvent:
+			b.Log.Infof("Connected to Slack (connection %d)", ev.ConnectionCount)
 			b.si = ev.Info
 			b.channels.populateChannels(true)
 			// The full user list can take minutes on a large workspace;
@@ -171,7 +174,7 @@ func (b *Bslack) handleSlackClient(messages chan *config.Message) {
 			b.Log.Errorf("Connection failed %#v %#v", ev.Error(), ev.ErrorObj)
 		case *slack.MemberJoinedChannelEvent:
 			b.users.populateUser(ev.User)
-		case *slack.HelloEvent, *slack.LatencyReport, *slack.ConnectingEvent:
+		case *slack.HelloEvent, *slack.LatencyReport:
 			continue
 		case *slack.UserChangeEvent:
 			b.users.invalidateUser(ev.User.ID)
