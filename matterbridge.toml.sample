@@ -1744,6 +1744,13 @@ MediaDownloadBlacklist=[".html$",".htm$"]
 #OPTIONAL (default false)
 IgnoreFailureOnStart=false
 
+#StartupFailureDelay is the number of seconds to wait before exiting when a
+#bridge fails to start. This stops a container restart policy from turning a
+#persistent failure into a tight reconnect loop, which gets a Discord bot token
+#reset after 1000 connections in 24 hours. Set to -1 to exit immediately.
+#OPTIONAL (default 300)
+StartupFailureDelay=300
+
 #LogFile defines the location of a file to write logs into, rather
 #than stdout.
 #Logging will still happen on stdout if the file cannot be open for

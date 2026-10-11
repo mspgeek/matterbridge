@@ -103,6 +103,7 @@ type Protocol struct {
 	HTMLDisable            bool     // matrix
 	IconURL                string   // mattermost, slack
 	IgnoreFailureOnStart   bool     // general
+	StartupFailureDelay    int      // general
 	IgnoreNicks            string   // all protocols
 	IgnoreMessages         string   // all protocols
 	Jid                    string   // xmpp
