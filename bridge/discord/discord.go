@@ -165,7 +165,6 @@ func (b *Bdiscord) connect() error {
 			b.channelsMutex.Unlock()
 			return fmt.Errorf("could not get %#v's channels: %w", b.GetString("Server"), err)
 		}
-		fmt.Println(b.channels)
 		b.guildID = guild.ID
 	}
 	b.channelsMutex.Unlock()
