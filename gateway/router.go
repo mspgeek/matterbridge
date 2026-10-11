@@ -93,7 +93,7 @@ func (r *Router) Start() error {
 		return fmt.Errorf("no [[gateway]] configured. See https://github.com/mspgeek-community/matterbridge/wiki/How-to-create-your-config for more info")
 	}
 	for _, gw := range r.Gateways {
-		r.logger.Infof("Parsing gateway %s", gw.Name)
+		r.logger.Debugf("Parsing gateway %s", gw.Name)
 		if len(gw.Bridges) == 0 {
 			return fmt.Errorf("no bridges configured for gateway %s. See https://github.com/mspgeek-community/matterbridge/wiki/How-to-create-your-config for more info", gw.Name)
 		}
@@ -101,6 +101,7 @@ func (r *Router) Start() error {
 			m[br.Account] = br
 		}
 	}
+	r.logger.Infof("Loaded %d gateways using %d bridges", len(r.Gateways), len(m))
 	for _, br := range m {
 		r.logger.Infof("Starting bridge: %s ", br.Account)
 		err := br.Connect()
@@ -111,6 +112,7 @@ func (r *Router) Start() error {
 			}
 			return e
 		}
+		r.logger.Infof("Bridge %s connected, joining %d channels", br.Account, len(br.Channels))
 		err = br.JoinChannels()
 		if err != nil {
 			e := fmt.Errorf("Bridge %s failed to join channel: %v", br.Account, err)
@@ -119,6 +121,7 @@ func (r *Router) Start() error {
 			}
 			return e
 		}
+		r.logger.Infof("Bridge %s started", br.Account)
 	}
 	// remove unused bridges
 	for _, gw := range r.Gateways {

@@ -179,8 +179,8 @@ func (b *users) populateUsers(wait bool) {
 		for i := range pagination.Users {
 			newUsers[pagination.Users[i].ID] = &pagination.Users[i]
 		}
-		b.log.Debugf("getting %d users", len(pagination.Users))
 		count++
+		b.log.Infof("Loading Slack users: page %d, %d users so far", count, len(newUsers))
 	}
 	b.log.Infof("Loaded %d Slack users in %d pages", len(newUsers), count)
 
@@ -310,6 +310,7 @@ func (b *channels) populateChannels(wait bool) {
 	// Always clear the flag, see users.populateUsers.
 	defer b.clearRefresh()
 
+	b.log.Info("Loading Slack channels")
 	newChannelsByID := map[string]*slack.Channel{}
 	newChannelsByName := map[string]*slack.Channel{}
 	newChannelMembers := make(map[string][]string)
@@ -355,6 +356,7 @@ func (b *channels) populateChannels(wait bool) {
 		queryParams.Cursor = nextCursor
 	}
 
+	b.log.Infof("Loaded %d Slack channels", len(newChannelsByID))
 	b.channelsMutex.Lock()
 	defer b.channelsMutex.Unlock()
 	b.channelsByID = newChannelsByID

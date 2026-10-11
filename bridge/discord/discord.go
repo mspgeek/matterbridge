@@ -249,13 +249,17 @@ func (b *Bdiscord) connect() error {
 	// Obtaining guild members and initializing nickname mapping. The first
 	// page is loaded now, the rest in the background so large servers do not
 	// delay (re)connecting.
+	b.Log.Info("Loading server members")
 	after, more, err := b.loadMemberPage("")
 	if err != nil {
 		b.Log.Error("Error obtaining server members: ", err)
 		return err
 	}
 	if more {
+		b.Log.Info("Loading the remaining server members in the background")
 		go b.loadRemainingMembers(b.c, after)
+	} else {
+		b.Log.Infof("Loaded %d server members", b.memberCount())
 	}
 
 	b.c.AddHandler(b.messageCreate)

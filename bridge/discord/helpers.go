@@ -56,6 +56,12 @@ func (b *Bdiscord) getNick(user *discordgo.User, guildID string) string {
 
 const memberPageSize = 1000
 
+func (b *Bdiscord) memberCount() int {
+	b.membersMutex.RLock()
+	defer b.membersMutex.RUnlock()
+	return len(b.userMemberMap)
+}
+
 // addMemberLocked records a guild member. membersMutex must be held.
 func (b *Bdiscord) addMemberLocked(member *discordgo.Member) {
 	if member == nil || member.User == nil {
@@ -109,7 +115,7 @@ func (b *Bdiscord) loadRemainingMembers(session *discordgo.Session, after string
 		}
 		pages++
 		if !more {
-			b.Log.Debugf("Loaded %d pages of server members", pages)
+			b.Log.Infof("Loaded %d server members in %d pages", b.memberCount(), pages)
 			return
 		}
 	}
