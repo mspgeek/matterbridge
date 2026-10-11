@@ -1,13 +1,11 @@
 package gateway
 
 import (
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/d5/tengo/v2"
@@ -63,139 +61,53 @@ func New(rootLogger *logrus.Logger, cfg *config.Gateway, r *Router) *Gateway {
 	if err := gw.AddConfig(cfg); err != nil {
 		logger.Errorf("Failed to add configuration to gateway: %#v", err)
 	}
-
-	// Start the routine to save cache to file periodically and load it once.
-	go func() {
-		ticker := time.NewTicker(120 * time.Second)
-		defer ticker.Stop()
-
-		// Flag to check if the cache has been loaded
-		cacheLoaded := false
-
-		for range ticker.C {
-			// Load the cache once. I put this in the ticker because I didn't know how else to do it, gw.Bridges only gets initiliazed later and I have no clue how to wait for that.
-			if !cacheLoaded {
-				bridges := make(map[string]*bridge.Bridge)
-				for _, br := range gw.Bridges {
-					bridges[br.Name] = br
-				}
-
-				if gw.cacheFileExists("/etc/matterbridge/cache.json") {
-					loadedCache := gw.loadCacheFromFile("/etc/matterbridge/cache.json", bridges)
-					// Check if loadedCache is not nil before assigning
-					if loadedCache != nil {
-						gw.Messages = loadedCache
-						cacheLoaded = true // Set the flag to true
-					}
-				}
-			}
-			// Continue to save the cache periodically
-			gw.saveCacheToFile(gw.Messages, "/etc/matterbridge/cache.json")
-		}
-	}()
-
 	return gw
 }
 
-type SerializableBrMsgID struct {
-	BridgeName string
-	ID         string
-	ChannelID  string
-}
-
-type CacheData struct {
-	Items map[string][]SerializableBrMsgID
-}
-
-func (gw *Gateway) cacheFileExists(filePath string) bool {
-	// Attempt to retrieve the file info. If we get an error, the file does not exist.
-	_, err := os.Stat(filePath)
+// lookupIDs returns the bridged copies of the message stored under key, from
+// the in-memory cache or the persistent message store.
+func (gw *Gateway) lookupIDs(key string) ([]*BrMsgID, bool) {
+	if res, ok := gw.Messages.Get(key); ok {
+		return res.([]*BrMsgID), true
+	}
+	store := gw.Router.store
+	if store == nil {
+		return nil, false
+	}
+	stored, err := store.load(gw.Name, key)
 	if err != nil {
-		if os.IsNotExist(err) {
-			// File does not exist
-			return false
+		gw.logger.Errorf("Loading message mapping %s failed: %s", key, err)
+		return nil, false
+	}
+	if len(stored) == 0 {
+		return nil, false
+	}
+	ids := make([]*BrMsgID, 0, len(stored))
+	for _, item := range stored {
+		br, ok := gw.Bridges[item.Account]
+		if !ok {
+			continue
 		}
-		// Another error occurred while trying to get the file info
-		gw.logger.Errorf("Error checking if cache file exists: %v", err)
+		ids = append(ids, &BrMsgID{br: br, ID: item.ID, ChannelID: item.ChannelID})
 	}
-	// File exists
-	return true
+	gw.Messages.Add(key, ids)
+	return ids, true
 }
 
-func (gw *Gateway) loadCacheFromFile(filePath string, bridges map[string]*bridge.Bridge) *lru.Cache {
-	data, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		gw.logger.Errorf("Error reading cache file: %v", err)
-		return nil // Return nil if reading the file fails
-	}
-
-	var cacheData CacheData
-	err = json.Unmarshal(data, &cacheData)
-	if err != nil {
-		return nil // Return nil if unmarshaling fails
-	}
-
-	cacheSize := 5000
-	cache, err := lru.New(cacheSize)
-	if err != nil {
-		gw.logger.Errorf("Error creating LRU cache: %v", err)
-		return nil // Return nil if creating the cache fails
-	}
-
-	for key, serializableItems := range cacheData.Items {
-		brMsgIDs := make([]*BrMsgID, len(serializableItems))
-		for i, item := range serializableItems {
-			bridge, exists := bridges[item.BridgeName]
-			if !exists {
-				gw.logger.Errorf("Bridge %s not found", item.BridgeName)
-				continue
-			}
-			brMsgIDs[i] = &BrMsgID{
-				br:        bridge, // Use the looked-up bridge
-				ID:        item.ID,
-				ChannelID: item.ChannelID,
-			}
-		}
-		cache.Add(key, brMsgIDs)
-	}
-
-	return cache
-}
-
-var fileLock sync.Mutex
-
-func (gw *Gateway) saveCacheToFile(cache *lru.Cache, filePath string) {
-	items := make(map[string][]SerializableBrMsgID)
-	for _, key := range cache.Keys() {
-		if value, found := cache.Peek(key); found {
-			if typedValue, ok := value.([]*BrMsgID); ok {
-				serializableItems := make([]SerializableBrMsgID, len(typedValue))
-				for i, item := range typedValue {
-					serializableItems[i] = SerializableBrMsgID{
-						BridgeName: item.br.Name,
-						ID:         item.ID,
-						ChannelID:  item.ChannelID,
-					}
-				}
-				items[key.(string)] = serializableItems
-			}
-		}
-	}
-
-	cacheData := CacheData{Items: items}
-	data, err := json.Marshal(cacheData)
-	if err != nil {
-		gw.logger.Errorf("Error serializing cache data: %v", err)
+// rememberIDs stores the bridged copies of the message stored under key in
+// the in-memory cache and the persistent message store.
+func (gw *Gateway) rememberIDs(key string, ids []*BrMsgID) {
+	gw.Messages.Add(key, ids)
+	store := gw.Router.store
+	if store == nil {
 		return
 	}
-
-	// Ensure only one goroutine can write to the file at a time.
-	fileLock.Lock()
-	defer fileLock.Unlock()
-
-	err = ioutil.WriteFile(filePath, data, 0644)
-	if err != nil {
-		gw.logger.Errorf("Error writing cache data to file: %v", err)
+	stored := make([]storedMsgID, 0, len(ids))
+	for _, id := range ids {
+		stored = append(stored, storedMsgID{Account: id.br.Account, ID: id.ID, ChannelID: id.ChannelID})
+	}
+	if err := store.save(gw.Name, key, stored); err != nil {
+		gw.logger.Errorf("Saving message mapping %s failed: %s", key, err)
 	}
 }
 
@@ -215,6 +127,18 @@ func (gw *Gateway) FindCanonicalMsgID(protocol string, mID string) string {
 				return mid.(string)
 			}
 		}
+	}
+
+	// Fall back to the persistent store for messages no longer in memory.
+	if _, ok := gw.lookupIDs(ID); ok {
+		return ID
+	}
+	if store := gw.Router.store; store != nil {
+		canonical, err := store.canonicalFor(gw.Name, ID)
+		if err != nil {
+			gw.logger.Errorf("Looking up message %s failed: %s", ID, err)
+		}
+		return canonical
 	}
 	return ""
 }
@@ -401,9 +325,11 @@ func (gw *Gateway) getDestChannel(msg *config.Message, dest bridge.Bridge) []con
 
 func (gw *Gateway) getDestMsgID(msgID string, dest *bridge.Bridge, channel *config.ChannelInfo) string {
 	//log the message ID to the console, together with the new channel name, and the bridge name
-	if res, ok := gw.Messages.Get(msgID); ok {
-		IDs := res.([]*BrMsgID)
+	if IDs, ok := gw.lookupIDs(msgID); ok {
 		for _, id := range IDs {
+			if id == nil || id.br == nil {
+				continue
+			}
 			// check protocol, bridge name and channelname
 			// for people that reuse the same bridge multiple times. see #342
 			//if dest.Protocol == id.br.Protocol && dest.Name == id.br.Name && channel.ID == id.ChannelID {
