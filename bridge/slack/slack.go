@@ -512,10 +512,13 @@ func (b *Bslack) uploadFile(msg *config.Message, channelID string) (string, erro
 		if fi.Comment != "" {
 			initialComment += fmt.Sprintf(" with comment: %s", fi.Comment)
 		}
-		res, err := b.sc.UploadFile(slack.FileUploadParameters{
+		// Slack retired files.upload; UploadFile uses the files.getUploadURLExternal /
+		// files.completeUploadExternal flow, which needs the size up front.
+		res, err := b.sc.UploadFile(slack.UploadFileParameters{
 			Reader:          bytes.NewReader(*fi.Data),
+			FileSize:        len(*fi.Data),
 			Filename:        fi.Name,
-			Channels:        []string{channelID},
+			Channel:         channelID,
 			InitialComment:  initialComment,
 			ThreadTimestamp: msg.ParentID,
 		})
@@ -526,18 +529,36 @@ func (b *Bslack) uploadFile(msg *config.Message, channelID string) (string, erro
 		if res.ID != "" {
 			b.Log.Debugf("Adding file ID %s to cache with timestamp %s", res.ID, ts.String())
 			b.cache.Add("file"+res.ID, ts)
-
-			// search for message id by uploaded file in private/public channels, get thread timestamp from uploaded file
-			if v, ok := res.Shares.Private[channelID]; ok && len(v) > 0 {
-				messageID = v[0].Ts
-			}
-			if v, ok := res.Shares.Public[channelID]; ok && len(v) > 0 {
-				messageID = v[0].Ts
+			if id := b.uploadedFileMessageID(res.ID, channelID); id != "" {
+				messageID = id
 			}
 		}
 	}
 	return messageID, nil
 }
+// uploadedFileMessageID returns the timestamp of the message that shared an
+// uploaded file in channelID. Sharing happens asynchronously after the upload
+// completes, so retry briefly.
+func (b *Bslack) uploadedFileMessageID(fileID, channelID string) string {
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Second)
+		}
+		file, _, _, err := b.sc.GetFileInfo(fileID, 0, 0)
+		if err != nil {
+			b.Log.Debugf("Could not get info for uploaded file %s: %#v", fileID, err)
+			return ""
+		}
+		if v, ok := file.Shares.Private[channelID]; ok && len(v) > 0 {
+			return v[0].Ts
+		}
+		if v, ok := file.Shares.Public[channelID]; ok && len(v) > 0 {
+			return v[0].Ts
+		}
+	}
+	return ""
+}
+
 func createForwardedMessageAttachment(forwardedMessage map[string]string) slack.Attachment {
 	attachment := slack.Attachment{
 		Pretext: fmt.Sprintf("Forwarded message from: %s", forwardedMessage["author_name"]),

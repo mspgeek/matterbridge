@@ -125,7 +125,7 @@ func (b *Bdiscord) connect() error {
 	}
 	b.setActiveSession(b.c)
 	b.Log.Info("Connection succeeded")
-	guilds, err := b.c.UserGuilds(100, "", "")
+	guilds, err := b.c.UserGuilds(100, "", "", false)
 	if err != nil {
 		return err
 	}
@@ -352,7 +352,7 @@ func (b *Bdiscord) Send(msg config.Message) (string, error) {
 	if msg.Event == config.EventMsgDelete || msg.Event == config.EventFileDelete {
 		return b.handleEventBotUser(&msg, channelID)
 	}
-	b.Log.Infof("Sending the discord message via thandle event webhook using " + msg.ParentID)
+	b.Log.Infof("Sending the discord message via thandle event webhook using %s", msg.ParentID)
 	return b.handleEventWebhook(&msg, channelID, msg.ParentID)
 }
 
