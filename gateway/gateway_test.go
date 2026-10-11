@@ -528,6 +528,7 @@ func TestSendMessageDropsEditOfUnknownMessage(t *testing.T) {
 type fakeMentioner struct {
 	bridge.Bridger
 	channels map[string]string
+	users    helper.NameIndex
 }
 
 func (f fakeMentioner) ChannelMention(name string) (string, bool) {
@@ -535,23 +536,52 @@ func (f fakeMentioner) ChannelMention(name string) (string, bool) {
 	return "<#" + id + ">", ok
 }
 
-func TestResolveChannelRefs(t *testing.T) {
+func (f fakeMentioner) UserMention(names []string) (string, bool) {
+	id, ok := helper.ResolveUserByNames(f.users, names)
+	return "<@" + id + ">", ok
+}
+
+func TestResolveRefs(t *testing.T) {
 	ref := helper.ChannelRef("v-hudu")
 	file := config.FileInfo{Name: "a.png", Comment: "see " + ref}
 	src := config.Message{Text: "in " + ref + " not " + helper.ChannelRef("nope"), Extra: map[string][]interface{}{"file": {file}}}
 
 	discord := &bridge.Bridge{Bridger: fakeMentioner{channels: map[string]string{"v-hudu": "111"}}}
 	msg := src
-	resolveChannelRefs(&msg, discord)
+	resolveRefs(&msg, discord)
 	assert.Equal(t, "in <#111> not #nope", msg.Text)
 	assert.Equal(t, "see <#111>", msg.Extra["file"][0].(config.FileInfo).Comment)
 
 	other := &bridge.Bridge{}
 	msg2 := src
-	resolveChannelRefs(&msg2, other)
+	resolveRefs(&msg2, other)
 	assert.Equal(t, "in #v-hudu not #nope", msg2.Text)
 	assert.Equal(t, "see #v-hudu", msg2.Extra["file"][0].(config.FileInfo).Comment)
 
 	// The source message, shared by all destinations, is unchanged.
 	assert.Equal(t, "see "+ref, src.Extra["file"][0].(config.FileInfo).Comment)
+}
+
+func TestResolveUserRefs(t *testing.T) {
+	users := helper.NameIndex{}
+	users.Add("D1", "mendygreen", "Mendy Green [MSPGeek]")
+	ref := helper.UserRef("Mendy Green [MSPGeek]", "mendy.green")
+	unknown := helper.UserRef("Some One", "someone")
+	src := config.Message{
+		Text:  ref + "] yo " + unknown + " @typed",
+		Extra: map[string][]interface{}{"file": {config.FileInfo{Comment: "cc " + ref}}},
+	}
+
+	discord := &bridge.Bridge{Bridger: fakeMentioner{users: users}}
+	msg := src
+	resolveRefs(&msg, discord)
+	// The literal "]" typed after the mention stays: nothing is guessed.
+	assert.Equal(t, "<@D1>] yo @Some One @typed", msg.Text)
+	assert.Equal(t, "cc <@D1>", msg.Extra["file"][0].(config.FileInfo).Comment)
+
+	other := &bridge.Bridge{}
+	msg2 := src
+	resolveRefs(&msg2, other)
+	assert.Equal(t, "@Mendy Green [MSPGeek]] yo @Some One @typed", msg2.Text)
+	assert.Equal(t, "cc "+ref, src.Extra["file"][0].(config.FileInfo).Comment)
 }

@@ -166,6 +166,16 @@ func (b *Bdiscord) ChannelIDByName(name string) string {
 	return b.getChannelID(name)
 }
 
+// UserMention returns the Discord mention of the member with these names (a
+// user reference from another platform).
+func (b *Bdiscord) UserMention(names []string) (string, bool) {
+	id, ok := helper.ResolveUserByNames(b.memberNameIndex(), names)
+	if !ok {
+		return "", false
+	}
+	return "<@" + id + ">", true
+}
+
 // ChannelMention returns the mention of the channel named exactly name, for
 // channel references from other platforms.
 func (b *Bdiscord) ChannelMention(name string) (string, bool) {

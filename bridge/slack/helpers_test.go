@@ -10,6 +10,7 @@ import (
 
 	"github.com/mspgeek-community/matterbridge/bridge"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
+	"github.com/mspgeek-community/matterbridge/bridge/helper"
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 	"github.com/stretchr/testify/assert"
@@ -134,4 +135,36 @@ func TestReplaceChannelByName(t *testing.T) {
 	// Only real channel links are marked, by their exact Slack name.
 	assert.Equal(t, "see <#channel:v-hudu> now", b.replaceChannelByName("see <#C111|> now"))
 	assert.Equal(t, "typed #v-hudu stays", b.replaceChannelByName("typed #v-hudu stays"))
+}
+
+func TestSlackMentionsUseUserRefs(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(ioutil.Discard)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":false,"error":"user_not_found"}`)
+	}))
+	defer server.Close()
+	sc := slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))
+	b := &Bslack{users: newUserManager(logrus.NewEntry(logger), sc)}
+	u := &slack.User{ID: "U1", Name: "mendy", RealName: "Mendy Green", Profile: slack.UserProfile{DisplayName: "Mendy Green [MSPGeek]"}}
+	b.users.users[u.ID] = u
+	b.users.nameIndex.Add(u.ID, userNames(u)...)
+
+	// Incoming: a real Slack mention becomes a reference with all names.
+	out := b.replaceMention("hi <@U1>, ok")
+	var names []string
+	rest := helper.ReplaceUserRefs(out, func(n []string) (string, bool) { names = n; return "X", true })
+	assert.Equal(t, "hi X, ok", rest)
+	assert.Equal(t, "Mendy Green [MSPGeek]", names[0])
+	assert.Contains(t, names, "mendy")
+	assert.Contains(t, names, "Mendy Green")
+
+	// Unknown user IDs are left as they are.
+	assert.Equal(t, "<@U9>", b.replaceMention("<@U9>"))
+
+	// Outgoing: a reference from Discord resolves to the Slack user.
+	mention, ok := b.UserMention([]string{"Mendy G", "mendy"})
+	assert.True(t, ok)
+	assert.Equal(t, "<@U1>", mention)
 }

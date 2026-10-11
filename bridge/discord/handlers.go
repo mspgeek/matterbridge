@@ -8,6 +8,7 @@ import (
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
+	"github.com/mspgeek-community/matterbridge/bridge/helper"
 )
 
 func logObjects(message string, objects ...interface{}) {
@@ -123,13 +124,19 @@ func (b *Bdiscord) replaceMentionsWithUsernames(m *discordgo.MessageCreate) stri
 		if user == nil {
 			continue
 		}
-		nick := user.Username
-		if member := b.memberByID(m.GuildID, user.ID); member != nil && member.Nick != "" {
-			nick = member.Nick
+		display, nick := user.Username, ""
+		if user.GlobalName != "" {
+			display = user.GlobalName
 		}
+		if member := b.memberByID(m.GuildID, user.ID); member != nil && member.Nick != "" {
+			display, nick = member.Nick, member.Nick
+		}
+		// Carry all of the user's names so the destination can link the
+		// right person without guessing where the name ends.
+		ref := helper.UserRef(display, nick, user.GlobalName, user.Username)
 		m.Content = strings.NewReplacer(
-			"<@"+user.ID+">", "@"+nick,
-			"<@!"+user.ID+">", "@"+nick,
+			"<@"+user.ID+">", ref,
+			"<@!"+user.ID+">", ref,
 		).Replace(m.Content)
 	}
 	return m.Content
