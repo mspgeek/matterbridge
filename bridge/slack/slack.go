@@ -2,7 +2,6 @@ package bslack
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -564,12 +563,6 @@ func (b *Bslack) prepareMessageOptions(msg *config.Message) []slack.MsgOption {
 		for _, attach := range msg.Extra[sSlackAttachment] {
 			attachments = append(attachments, attach.([]slack.Attachment)...)
 		}
-	}
-	jsonBytes, err := json.MarshalIndent(msg, "", "  ")
-	if err != nil {
-		b.Log.Errorf("Failed to marshal MessageCreate to JSON: %v", err)
-	} else {
-		b.Log.Infof("This is the entire object: %s", string(jsonBytes))
 	}
 	// add a manual attachment if the text contains: "\n~|"
 	if strings.Contains(msg.Text, "\n~|") {
