@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mspgeek-community/matterbridge/bridge/config"
+	"github.com/mspgeek-community/matterbridge/bridge/helper"
 	"github.com/sirupsen/logrus"
 	"github.com/slack-go/slack"
 )
@@ -159,6 +160,22 @@ func (b *Bslack) replaceMention(text string) string {
 		return match
 	}
 	return mentionRE.ReplaceAllStringFunc(text, replaceFunc)
+}
+
+// replaceOutgoingMentions turns "@name" from other platforms into a Slack
+// mention when name matches a user's display name, real name or username
+// (ignoring case, spaces and punctuation).
+func (b *Bslack) replaceOutgoingMentions(text string) string {
+	if b.users == nil {
+		return text
+	}
+	return helper.ReplaceMentions(text, func(name string) (string, bool) {
+		id, ok := b.users.lookupByName(name)
+		if !ok {
+			return "", false
+		}
+		return "<@" + id + ">", true
+	})
 }
 
 // @see https://api.slack.com/docs/message-formatting#linking_to_channels_and_users

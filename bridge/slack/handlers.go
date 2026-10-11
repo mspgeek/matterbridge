@@ -168,7 +168,9 @@ func (b *Bslack) handleSlackClient(messages chan *config.Message) {
 		case *slack.ConnectedEvent:
 			b.si = ev.Info
 			b.channels.populateChannels(true)
-			b.users.populateUsers(true)
+			// The full user list can take minutes on a large workspace;
+			// users are also fetched one by one on demand meanwhile.
+			go b.users.populateUsers(true)
 		case *slack.InvalidAuthEvent:
 			b.Log.Fatalf("Invalid Token %#v", ev)
 		case *slack.ConnectionErrorEvent:

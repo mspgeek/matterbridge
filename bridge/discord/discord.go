@@ -45,6 +45,10 @@ type Bdiscord struct {
 	membersMutex  sync.RWMutex
 	userMemberMap map[string]*discordgo.Member
 	nickMemberMap map[string]*discordgo.Member
+	// memberIndex resolves normalized names to user IDs for @mentions; it is
+	// rebuilt from userMemberMap when memberIndexDirty is set.
+	memberIndex      helper.NameIndex
+	memberIndexDirty bool
 
 	// Webhook specific logic
 	useAutoWebhooks bool
@@ -243,24 +247,16 @@ func (b *Bdiscord) connect() error {
 		}
 	}
 
-	// Obtaining guild members and initializing nickname mapping.
-	b.membersMutex.Lock()
-	defer b.membersMutex.Unlock()
-	members, err := b.c.GuildMembers(b.guildID, "", 1000)
+	// Obtaining guild members and initializing nickname mapping. The first
+	// page is loaded now, the rest in the background so large servers do not
+	// delay (re)connecting.
+	after, more, err := b.loadMemberPage("")
 	if err != nil {
 		b.Log.Error("Error obtaining server members: ", err)
 		return err
 	}
-	for _, member := range members {
-		if member == nil {
-			b.Log.Warnf("Skipping missing information for a user.")
-			continue
-		}
-		b.userMemberMap[member.User.ID] = member
-		b.nickMemberMap[member.User.Username] = member
-		if member.Nick != "" {
-			b.nickMemberMap[member.Nick] = member
-		}
+	if more {
+		go b.loadRemainingMembers(b.c, after)
 	}
 
 	b.c.AddHandler(b.messageCreate)

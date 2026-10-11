@@ -319,11 +319,7 @@ func (b *Bdiscord) memberUpdate(s *discordgo.Session, m *discordgo.GuildMemberUp
 		delete(b.nickMemberMap, currMember.Nick)
 		delete(b.userMemberMap, m.Member.User.ID)
 	}
-	b.userMemberMap[m.Member.User.ID] = m.Member
-	b.nickMemberMap[m.Member.User.Username] = m.Member
-	if m.Member.Nick != "" {
-		b.nickMemberMap[m.Member.Nick] = m.Member
-	}
+	b.addMemberLocked(m.Member)
 }
 
 func (b *Bdiscord) memberAdd(s *discordgo.Session, m *discordgo.GuildMemberAdd) {

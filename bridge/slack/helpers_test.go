@@ -3,6 +3,8 @@ package bslack
 import (
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -49,4 +51,57 @@ func TestIsFreshEdit(t *testing.T) {
 	assert.True(t, isFreshEdit(ts(10*time.Second)))
 	assert.False(t, isFreshEdit(ts(config.EditMaxAge+time.Minute)))
 	assert.False(t, isFreshEdit(ts(30*24*time.Hour)))
+}
+
+func TestReplaceOutgoingMentions(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(ioutil.Discard)
+	cfg := &bridge.Config{Bridge: &bridge.Bridge{Log: logrus.NewEntry(logger)}}
+	b := newBridge(cfg)
+	b.users = newUserManager(logrus.NewEntry(logger), nil)
+	for _, u := range []*slack.User{
+		{ID: "U1", Name: "jsmith", RealName: "John Smith", Profile: slack.UserProfile{DisplayName: "Johnny"}},
+		{ID: "U2", Name: "kim", Profile: slack.UserProfile{RealName: "Kim Doe"}},
+	} {
+		b.users.users[u.ID] = u
+		b.users.nameIndex.Add(u.ID, userNames(u)...)
+	}
+
+	// Discord sends "@" + nickname, which may contain spaces.
+	assert.Equal(t, "hi <@U1> and <@U2>!", b.replaceOutgoingMentions("hi @John Smith and @kim_doe!"))
+	assert.Equal(t, "<@U1>", b.replaceOutgoingMentions("@johnny"))
+	assert.Equal(t, "@stranger", b.replaceOutgoingMentions("@stranger"))
+	assert.Equal(t, "a@b.com", b.replaceOutgoingMentions("a@b.com"))
+}
+
+// A failed refresh must not leave refreshInProgress set: populateUsers(true)
+// would then wait forever and block the Slack event loop.
+func TestPopulateRefreshFlagClearedOnError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"ok":false,"error":"invalid_auth"}`)
+	}))
+	defer server.Close()
+	logger := logrus.New()
+	logger.SetOutput(ioutil.Discard)
+	sc := slack.New("xoxb-test", slack.OptionAPIURL(server.URL+"/"))
+
+	u := newUserManager(logrus.NewEntry(logger), sc)
+	u.populateUsers(true)
+	assert.False(t, u.refreshInProgress)
+
+	c := newChannelManager(logrus.NewEntry(logger), sc)
+	c.populateChannels(true)
+	assert.False(t, c.refreshInProgress)
+
+	done := make(chan struct{})
+	go func() {
+		u.populateUsers(true) // used to block forever here
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("populateUsers blocked after a failed refresh")
+	}
 }

@@ -244,6 +244,9 @@ func (b *Bslack) Send(msg config.Message) (string, error) {
 
 	msg.Text = helper.ClipMessage(msg.Text, messageLength, b.GetString("MessageClipped"))
 	msg.Text = b.replaceCodeFence(msg.Text)
+	if msg.Account != b.Account {
+		msg.Text = b.replaceOutgoingMentions(msg.Text)
+	}
 
 	// Make a action /me of the message
 	if msg.Event == config.EventUserAction {
