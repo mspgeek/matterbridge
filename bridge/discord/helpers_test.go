@@ -3,44 +3,24 @@ package bdiscord
 import (
 	"testing"
 
+	"github.com/bwmarrin/discordgo"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestEnumerateUsernames(t *testing.T) {
-	testcases := map[string]struct {
-		match             string
-		expectedUsernames []string
-	}{
-		"only space": {
-			match:             "  \t\n \t",
-			expectedUsernames: nil,
-		},
-		"single word": {
-			match:             "veni",
-			expectedUsernames: []string{"veni"},
-		},
-		"single word with preceeding space": {
-			match:             " vidi",
-			expectedUsernames: []string{" vidi"},
-		},
-		"single word with suffixed space": {
-			match:             "vici ",
-			expectedUsernames: []string{"vici"},
-		},
-		"multi-word with varying whitespace": {
-			match: "just me  and\tmy friends \t",
-			expectedUsernames: []string{
-				"just",
-				"just me",
-				"just me  and",
-				"just me  and\tmy",
-				"just me  and\tmy friends",
-			},
-		},
+func TestReplaceUserMentions(t *testing.T) {
+	b := &Bdiscord{
+		userMemberMap: map[string]*discordgo.Member{},
+		nickMemberMap: map[string]*discordgo.Member{},
 	}
+	b.addMemberLocked(&discordgo.Member{User: &discordgo.User{ID: "1", Username: "jsmith", GlobalName: "John Smith"}})
+	b.addMemberLocked(&discordgo.Member{User: &discordgo.User{ID: "2", Username: "kdoe"}, Nick: "Kim Doe"})
 
-	for testname, testcase := range testcases {
-		foundUsernames := enumerateUsernames(testcase.match)
-		assert.Equalf(t, testcase.expectedUsernames, foundUsernames, "Should have found the expected usernames for testcase %s", testname)
-	}
+	// Slack sends display names with spaces removed.
+	assert.Equal(t, "hey <@1>, see <@2>", b.replaceUserMentions("hey @JohnSmith, see @KimDoe"))
+	assert.Equal(t, "<@1> and <@2>", b.replaceUserMentions("@jsmith and @kim doe"))
+	assert.Equal(t, "@nobody", b.replaceUserMentions("@nobody"))
+
+	// The index follows member updates.
+	b.addMemberLocked(&discordgo.Member{User: &discordgo.User{ID: "3", Username: "newbie"}})
+	assert.Equal(t, "<@3>", b.replaceUserMentions("@newbie"))
 }

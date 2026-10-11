@@ -507,3 +507,18 @@ func BenchmarkTengo(b *testing.B) {
 		}
 	}
 }
+
+func TestSendMessageDropsEditOfUnknownMessage(t *testing.T) {
+	r := maketestRouter(testconfig2)
+	gw := r.Gateways["bridge1"]
+	dest := gw.Bridges["slack.test"]
+	channel := gw.Channels["testingslack.test"]
+	msg := &config.Message{
+		Text: "edited", Channel: "general", Account: "discord.test", Gateway: "bridge1",
+		Protocol: "discord", Username: "test", ID: "123", Edit: true,
+	}
+	// The slack bridge is not connected; reaching Send would fail.
+	id, err := gw.SendMessage(msg, dest, channel, "", "")
+	assert.NoError(t, err)
+	assert.Equal(t, "", id)
+}

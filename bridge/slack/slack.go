@@ -43,25 +43,26 @@ type Bslack struct {
 }
 
 const (
-	sHello               = "hello"
-	sChannelJoin         = "channel_join"
-	sChannelLeave        = "channel_leave"
-	sChannelJoined       = "channel_joined"
-	sMemberJoined        = "member_joined_channel"
-	sMessageChanged      = "message_changed"
-	sMessageDeleted      = "message_deleted"
-	sSlackAttachment     = "slack_attachment"
-	sPinnedItem          = "pinned_item"
-	sUnpinnedItem        = "unpinned_item"
-	sChannelTopic        = "channel_topic"
-	sChannelPurpose      = "channel_purpose"
-	sFileComment         = "file_comment"
-	sMeMessage           = "me_message"
-	sUserTyping          = "user_typing"
-	sLatencyReport       = "latency_report"
-	sSystemUser          = "system"
-	sSlackBotUser        = "slackbot"
-	cfileDownloadChannel = "file_download_channel"
+	sHello                = "hello"
+	sChannelJoin          = "channel_join"
+	sChannelLeave         = "channel_leave"
+	sChannelJoined        = "channel_joined"
+	sMemberJoined         = "member_joined_channel"
+	sMessageChanged       = "message_changed"
+	sDeletedThreadStarter = "This message was deleted."
+	sMessageDeleted       = "message_deleted"
+	sSlackAttachment      = "slack_attachment"
+	sPinnedItem           = "pinned_item"
+	sUnpinnedItem         = "unpinned_item"
+	sChannelTopic         = "channel_topic"
+	sChannelPurpose       = "channel_purpose"
+	sFileComment          = "file_comment"
+	sMeMessage            = "me_message"
+	sUserTyping           = "user_typing"
+	sLatencyReport        = "latency_report"
+	sSystemUser           = "system"
+	sSlackBotUser         = "slackbot"
+	cfileDownloadChannel  = "file_download_channel"
 
 	tokenConfig           = "Token"
 	incomingWebhookConfig = "WebhookBindAddress"
@@ -243,6 +244,9 @@ func (b *Bslack) Send(msg config.Message) (string, error) {
 
 	msg.Text = helper.ClipMessage(msg.Text, messageLength, b.GetString("MessageClipped"))
 	msg.Text = b.replaceCodeFence(msg.Text)
+	if msg.Account != b.Account {
+		msg.Text = b.replaceOutgoingMentions(msg.Text)
+	}
 
 	// Make a action /me of the message
 	if msg.Event == config.EventUserAction {
@@ -512,10 +516,13 @@ func (b *Bslack) uploadFile(msg *config.Message, channelID string) (string, erro
 		if fi.Comment != "" {
 			initialComment += fmt.Sprintf(" with comment: %s", fi.Comment)
 		}
-		res, err := b.sc.UploadFile(slack.FileUploadParameters{
+		// Slack retired files.upload; UploadFile uses the files.getUploadURLExternal /
+		// files.completeUploadExternal flow, which needs the size up front.
+		res, err := b.sc.UploadFile(slack.UploadFileParameters{
 			Reader:          bytes.NewReader(*fi.Data),
+			FileSize:        len(*fi.Data),
 			Filename:        fi.Name,
-			Channels:        []string{channelID},
+			Channel:         channelID,
 			InitialComment:  initialComment,
 			ThreadTimestamp: msg.ParentID,
 		})
@@ -526,18 +533,37 @@ func (b *Bslack) uploadFile(msg *config.Message, channelID string) (string, erro
 		if res.ID != "" {
 			b.Log.Debugf("Adding file ID %s to cache with timestamp %s", res.ID, ts.String())
 			b.cache.Add("file"+res.ID, ts)
-
-			// search for message id by uploaded file in private/public channels, get thread timestamp from uploaded file
-			if v, ok := res.Shares.Private[channelID]; ok && len(v) > 0 {
-				messageID = v[0].Ts
-			}
-			if v, ok := res.Shares.Public[channelID]; ok && len(v) > 0 {
-				messageID = v[0].Ts
+			if id := b.uploadedFileMessageID(res.ID, channelID); id != "" {
+				messageID = id
 			}
 		}
 	}
 	return messageID, nil
 }
+
+// uploadedFileMessageID returns the timestamp of the message that shared an
+// uploaded file in channelID. Sharing happens asynchronously after the upload
+// completes, so retry briefly.
+func (b *Bslack) uploadedFileMessageID(fileID, channelID string) string {
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Second)
+		}
+		file, _, _, err := b.sc.GetFileInfo(fileID, 0, 0)
+		if err != nil {
+			b.Log.Debugf("Could not get info for uploaded file %s: %#v", fileID, err)
+			return ""
+		}
+		if v, ok := file.Shares.Private[channelID]; ok && len(v) > 0 {
+			return v[0].Ts
+		}
+		if v, ok := file.Shares.Public[channelID]; ok && len(v) > 0 {
+			return v[0].Ts
+		}
+	}
+	return ""
+}
+
 func createForwardedMessageAttachment(forwardedMessage map[string]string) slack.Attachment {
 	attachment := slack.Attachment{
 		Pretext: fmt.Sprintf("Forwarded message from: %s", forwardedMessage["author_name"]),
@@ -589,7 +615,7 @@ func (b *Bslack) prepareMessageOptions(msg *config.Message) []slack.MsgOption {
 			// Construct the normal text message, including the view message link if applicable
 			msg.Text = splitText[2] + msglink
 		}
-	}				
+	}
 
 	var opts []slack.MsgOption
 	opts = append(opts,
