@@ -37,14 +37,73 @@ func TestResolveUserByNames(t *testing.T) {
 	assert.True(t, ok)
 	assert.Equal(t, "D1", id)
 
-	// The most specific name wins; a later name matching someone else does not
-	// block the link.
-	id, ok = ResolveUserByNames(idx, []string{"Mendy Green", "jsmith"})
-	assert.True(t, ok)
-	assert.Equal(t, "D1", id)
-
 	_, ok = ResolveUserByNames(idx, []string{"nobody"})
 	assert.False(t, ok)
+
+	// A name only matches whole: "John Smith" does not match a user "John".
+	idx.Add("D3", "John")
+	_, ok = ResolveUserByNames(idx, []string{"John Smith"})
+	assert.False(t, ok)
+}
+
+func TestResolveUserByNamesPrefersMostWords(t *testing.T) {
+	// Discord: "KelvinTegelaar" (tegek) and "Kelvin" (paraphen).
+	idx := NameIndex{}
+	idx.Add("tegek", "tegek", "KelvinTegelaar")
+	idx.Add("paraphen", "paraphen", "Kelvin")
+
+	// Slack: display name, real name, profile real name, username.
+	names := []string{"Kelvin Tegelaar - MVP/PoshSpice", "Kelvin Tegelaar", "Kelvin Tegelaar", "kelvin"}
+	id, ok := ResolveUserByNames(idx, names)
+	assert.True(t, ok)
+	assert.Equal(t, "tegek", id)
+
+	// Order does not matter: the two-word name still wins.
+	id, ok = ResolveUserByNames(idx, []string{"kelvin", "Kelvin Tegelaar"})
+	assert.True(t, ok)
+	assert.Equal(t, "tegek", id)
+
+	// Only the one-word name matches: it links.
+	id, ok = ResolveUserByNames(idx, []string{"Someone Else", "kelvin"})
+	assert.True(t, ok)
+	assert.Equal(t, "paraphen", id)
+}
+
+func TestResolveUserByNamesTie(t *testing.T) {
+	idx := NameIndex{}
+	idx.Add("A", "Bob Jones")
+	idx.Add("B", "Robert Smith")
+	_, ok := ResolveUserByNames(idx, []string{"Bob Jones", "Robert Smith"})
+	assert.False(t, ok, "equally specific names for different users must not link")
+
+	// The same user matched twice is not a tie.
+	idx.Add("C", "Ann Lee", "annlee")
+	id, ok := ResolveUserByNames(idx, []string{"Ann Lee", "Ann-Lee"})
+	assert.True(t, ok)
+	assert.Equal(t, "C", id)
+}
+
+func TestResolveUserByNamesDecorations(t *testing.T) {
+	idx := NameIndex{}
+	idx.Add("U", "Jane Doe")
+	for _, name := range []string{
+		"Jane Doe - CTO", "Jane Doe – CTO", "Jane Doe — CTO", "Jane Doe | Acme",
+		"Jane Doe [Acme]", "Jane Doe (she/her)",
+	} {
+		id, ok := ResolveUserByNames(idx, []string{name})
+		assert.True(t, ok, name)
+		assert.Equal(t, "U", id, name)
+	}
+
+	// The full decorated name still matches a member who uses it.
+	idx.Add("V", "Jim Bo - MVP")
+	id, ok := ResolveUserByNames(idx, []string{"Jim Bo - MVP"})
+	assert.True(t, ok)
+	assert.Equal(t, "V", id)
+
+	// Hyphenated names are not decorations.
+	assert.Equal(t, "", stripDecoration("Mary-Jane Watson"))
+	assert.Equal(t, "", stripDecoration("- leading"))
 }
 
 func TestReplaceMentionsSkipsMentionMarkup(t *testing.T) {

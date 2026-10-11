@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"regexp"
+	"strings"
 )
 
 // A user reference marks a real @mention from the source platform. It carries
@@ -68,15 +69,64 @@ func decodeUserRef(match string) []string {
 	return names
 }
 
-// ResolveUserByNames returns the user ID for the first of names (most
-// specific first: display name, real name, username) that matches exactly one
-// user in idx. A short username matching some other user does not override a
-// match on the display or real name.
-func ResolveUserByNames(idx NameIndex, names []string) (string, bool) {
-	for _, name := range names {
-		if id, ok := idx.Lookup(name); ok {
-			return id, true
+// nameDecorations separate a name from a title or company added to it, as in
+// "Kelvin Tegelaar - MVP/PoshSpice" or "Mendy Green [MSPGeek]".
+var nameDecorations = []string{" - ", " – ", " — ", " | ", " [", " ("}
+
+// stripDecoration returns name without a decoration, or "" when it has none.
+func stripDecoration(name string) string {
+	cut := -1
+	for _, sep := range nameDecorations {
+		if i := strings.Index(name, sep); i > 0 && (cut < 0 || i < cut) {
+			cut = i
 		}
 	}
-	return "", false
+	if cut < 0 {
+		return ""
+	}
+	return strings.TrimSpace(name[:cut])
+}
+
+// wordCount returns the number of words in name that contain a letter or digit.
+func wordCount(name string) int {
+	n := 0
+	for _, word := range strings.Fields(name) {
+		if NormalizeName(word) != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// ResolveUserByNames returns the user ID matched by the most specific of names.
+// A name matches only when the whole name matches a user in idx; the number of
+// words in the name ranks the matches, so "Kelvin Tegelaar" (two words) wins
+// over a username "kelvin" that belongs to someone else. Each name is also
+// tried without a decoration such as " - Title" or " [Company]". When the best
+// matches point to different users, nothing is linked.
+func ResolveUserByNames(idx NameIndex, names []string) (string, bool) {
+	var candidates []string
+	for _, name := range names {
+		candidates = append(candidates, name)
+		if stripped := stripDecoration(name); stripped != "" {
+			candidates = append(candidates, stripped)
+		}
+	}
+	best, bestScore, tied := "", 0, false
+	for _, name := range candidates {
+		id, ok := idx.Lookup(name)
+		if !ok {
+			continue
+		}
+		switch score := wordCount(name); {
+		case score > bestScore:
+			best, bestScore, tied = id, score, false
+		case score == bestScore && id != best:
+			tied = true
+		}
+	}
+	if best == "" || tied {
+		return "", false
+	}
+	return best, true
 }

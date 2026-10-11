@@ -622,10 +622,10 @@ func TestUserRefLinksDespiteOtherNameMatches(t *testing.T) {
 	assert.Equal(t, "<@111> <@333> did a PR", msg.Text)
 
 	// An unknown user's fallback text is not guessed again.
-	nobody := helper.UserRef("Kelvin Tegelaar - Someone Else", "zzz")
+	nobody := helper.UserRef("Kelvin Tegelaar Jr", "zzz")
 	users2 := helper.NameIndex{}
 	users2.Add("111", "Kelvin Tegelaar")
 	msg = config.Message{Account: "slack.test", Text: "hi " + nobody}
 	resolveRefs(&msg, &bridge.Bridge{Account: "discord.test", Bridger: fakeMentioner{users: users2}})
-	assert.Equal(t, "hi @Kelvin Tegelaar - Someone Else", msg.Text)
+	assert.Equal(t, "hi @Kelvin Tegelaar Jr", msg.Text)
 }
