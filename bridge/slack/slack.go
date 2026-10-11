@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/mspgeek-community/matterbridge/bridge"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
@@ -34,9 +33,6 @@ type Bslack struct {
 	useChannelID bool
 
 	channels *channels
-	//discord Fields for channelauto replaceChannelByName
-	discordConnection *discordgo.Session
-	dChannels         []*discordgo.Channel
 
 	users  *users
 	legacy bool
@@ -124,32 +120,6 @@ func (b *Bslack) Connect() error {
 		b.rtm = b.sc.NewRTM()
 		go b.rtm.ManageConnection()
 		go b.handleSlack()
-		b.Log.Info("Connecting to discord for auto channel replacements.")
-		token := b.GetString("DiscordToken")
-		discordConnection, err := discordgo.New("Bot " + token)
-		if err != nil {
-			fmt.Println("Error connecting")
-
-			return err
-		}
-
-		err = discordConnection.Open()
-		if err != nil {
-			fmt.Println("Error opening discord connection")
-
-			return err
-		}
-		b.Log.Info("Connected to discord. Listing Channels.")
-
-		dChannels, err := discordConnection.GuildChannels(b.GetString("DiscordServer"))
-		if err != nil {
-			fmt.Println("Error Listing discord channels. Channel auto remap wont work.")
-			return err
-		}
-		b.Log.Info(dChannels)
-
-		b.discordConnection = discordConnection
-		b.dChannels = dChannels
 
 		return nil
 	}

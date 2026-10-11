@@ -37,6 +37,7 @@ func TestReplaceMentions(t *testing.T) {
 	idx.Add("U1", "John Smith")
 	idx.Add("U2", "John")
 	idx.Add("U3", "here")
+	idx.Add("U4", "Mendy Green [MSPGeek]")
 	resolve := func(name string) (string, bool) {
 		id, ok := idx.Lookup(name)
 		return "<@" + id + ">", ok
@@ -55,6 +56,11 @@ func TestReplaceMentions(t *testing.T) {
 		"@here look":                           "@here look", // reserved
 		"@@John":                               "@@John",
 		"two @John and @John Smith":            "two <@U2> and <@U1>",
+		"@Mendy Green [MSPGeek] yo":            "<@U4> yo",   // Discord -> Slack
+		"@MendyGreen[MSPGeek] what":            "<@U4> what", // Slack -> Discord
+		"hi @Mendy Green [MSPGeek], ok?":       "hi <@U4>, ok?",
+		"[@MendyGreen[MSPGeek]]":               "[<@U4>]",
+		"(@John) and [@John]":                  "(<@U2>) and [<@U2>]",
 		"":                                     "",
 	}
 	for in, want := range cases {

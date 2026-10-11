@@ -24,3 +24,14 @@ func TestReplaceUserMentions(t *testing.T) {
 	b.addMemberLocked(&discordgo.Member{User: &discordgo.User{ID: "3", Username: "newbie"}})
 	assert.Equal(t, "<@3>", b.replaceUserMentions("@newbie"))
 }
+
+func TestChannelMention(t *testing.T) {
+	b := &Bdiscord{channels: []*discordgo.Channel{{ID: "111", Name: "v-hudu"}, {ID: "222", Name: "general"}}}
+	link, ok := b.ChannelMention("v-hudu")
+	assert.True(t, ok)
+	assert.Equal(t, "<#111>", link)
+	_, ok = b.ChannelMention("V-Hudu") // exact names only
+	assert.False(t, ok)
+	_, ok = b.ChannelMention("missing")
+	assert.False(t, ok)
+}

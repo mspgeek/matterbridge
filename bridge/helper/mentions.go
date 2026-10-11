@@ -124,6 +124,21 @@ func truncateRunes(s string, n int) string {
 	return s
 }
 
+// keepClosingBrackets re-attaches closing brackets that trimming removed from
+// name when name opened them, so "Mendy Green [MSPGeek]" keeps its "]" while
+// "(@John)" still ends at "John".
+func keepClosingBrackets(name, after string) string {
+	pairs := map[rune]rune{')': '(', ']': '[', '}': '{'}
+	for _, r := range after {
+		open, ok := pairs[r]
+		if !ok || strings.Count(name, string(open)) <= strings.Count(name, string(r)) {
+			break
+		}
+		name += string(r)
+	}
+	return name
+}
+
 // mentionCandidates returns the prefixes of s that end before whitespace or
 // trailing punctuation, shortest first: "John Smith, hi" gives "John",
 // "John Smith", "John Smith, hi".
@@ -134,6 +149,7 @@ func mentionCandidates(s string) []string {
 			return unicode.IsSpace(r) || (unicode.IsPunct(r) && r != '_' && r != '-' && r != '.')
 		})
 		c = strings.TrimRight(c, ".")
+		c = keepClosingBrackets(c, s[len(c):])
 		if c != "" && (len(candidates) == 0 || candidates[len(candidates)-1] != c) {
 			candidates = append(candidates, c)
 		}

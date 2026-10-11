@@ -185,25 +185,20 @@ func (b *Bslack) replaceChannel(text string) string {
 	}
 	return text
 }
-func (b *Bslack) replaceChannelByName(text string) string {
-	for _, r := range ChannelREAuto.FindAllStringSubmatch(text, -1) {
-		channelIdOnly := strings.TrimSuffix(strings.TrimPrefix(r[0], "<#"), "|>")
-		channelName, err := b.channels.getChannelByID(channelIdOnly)
-		if err != nil {
-			continue
-		}
-		channelNameWithoutBrackets := strings.TrimPrefix(strings.TrimSuffix(channelName.Name, ">"), "<#")
-		matchedString := r[0]
-		text = strings.Replace(text, matchedString, "#"+channelNameWithoutBrackets, 1)
-		// Use the initialized dChannels from the Bslack struct
-		for _, channel := range b.dChannels {
-			if channelNameWithoutBrackets == channel.Name {
-				text = strings.Replace(text, "#"+channelNameWithoutBrackets, "<#"+channel.ID+">", 1)
-			}
-		}
-	}
 
-	return text
+// replaceChannelByName turns Slack channel links without a label ("<#C123|>")
+// into a channel reference carrying the exact Slack channel name. The gateway
+// turns it into the destination's channel link when the destination has a
+// channel with exactly that name (Discord), and into "#name" otherwise.
+func (b *Bslack) replaceChannelByName(text string) string {
+	return ChannelREAuto.ReplaceAllStringFunc(text, func(match string) string {
+		channelID := strings.TrimSuffix(strings.TrimPrefix(match, "<#"), "|>")
+		channel, err := b.channels.getChannelByID(channelID)
+		if err != nil {
+			return match
+		}
+		return helper.ChannelRef(channel.Name)
+	})
 }
 
 // @see https://api.slack.com/docs/message-formatting#variables
