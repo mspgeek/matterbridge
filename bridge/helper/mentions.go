@@ -73,7 +73,8 @@ func ReplaceMentions(text string, resolve func(name string) (string, bool)) stri
 		out.WriteString(text[i:at])
 		i = at + 1
 		if at > 0 {
-			if prev, _ := utf8.DecodeLastRuneInString(text[:at]); prev == '@' || prev == '_' ||
+			// "<@" is mention markup (<@123>, <@user:...>), not a typed mention.
+			if prev, _ := utf8.DecodeLastRuneInString(text[:at]); prev == '@' || prev == '_' || prev == '<' ||
 				unicode.IsLetter(prev) || unicode.IsNumber(prev) || inURL(text[:at]) {
 				out.WriteByte('@')
 				continue

@@ -542,20 +542,33 @@ type channelMentioner interface {
 	ChannelMention(name string) (string, bool)
 }
 
-// resolveChannelRefs replaces channel references in the text and file
-// comments of msg with dest's channel links, or "#name" when dest has no
-// channel with that exact name.
-func resolveChannelRefs(msg *config.Message, dest *bridge.Bridge) {
-	var resolve func(string) (string, bool)
+// userMentioner is implemented by bridges that can mention users by name.
+type userMentioner interface {
+	UserMention(names []string) (string, bool)
+}
+
+// resolveRefs replaces channel and user references in the text and file
+// comments of msg with dest's links and mentions, or plain "#name"/"@name"
+// when dest cannot link them.
+func resolveRefs(msg *config.Message, dest *bridge.Bridge) {
+	var resolveChannel func(string) (string, bool)
 	if mentioner, ok := dest.Bridger.(channelMentioner); ok {
-		resolve = mentioner.ChannelMention
+		resolveChannel = mentioner.ChannelMention
 	}
-	msg.Text = helper.ReplaceChannelRefs(msg.Text, resolve)
+	var resolveUser func([]string) (string, bool)
+	if mentioner, ok := dest.Bridger.(userMentioner); ok {
+		resolveUser = mentioner.UserMention
+	}
+	resolve := func(text string) string {
+		text = helper.ReplaceChannelRefs(text, resolveChannel)
+		return helper.ReplaceUserRefs(text, resolveUser)
+	}
+	msg.Text = resolve(msg.Text)
 
 	files := msg.Extra["file"]
 	needsCopy := false
 	for _, f := range files {
-		if fi, ok := f.(config.FileInfo); ok && helper.HasChannelRefs(fi.Comment) {
+		if fi, ok := f.(config.FileInfo); ok && (helper.HasChannelRefs(fi.Comment) || helper.HasUserRefs(fi.Comment)) {
 			needsCopy = true
 			break
 		}
@@ -571,7 +584,7 @@ func resolveChannelRefs(msg *config.Message, dest *bridge.Bridge) {
 	newFiles := make([]interface{}, len(files))
 	for i, f := range files {
 		if fi, ok := f.(config.FileInfo); ok {
-			fi.Comment = helper.ReplaceChannelRefs(fi.Comment, resolve)
+			fi.Comment = resolve(fi.Comment)
 			newFiles[i] = fi
 			continue
 		}
@@ -667,7 +680,7 @@ func (gw *Gateway) SendMessage(
 	}
 	// Add this block to replace <#TS:(random timestamp here)> with <#(RESULTSFROMGW.getDestMsgID)>
 	msg.Text = gw.ReplaceTSString(canonicalParentMsgID, canonicalThreadMsgID, msg.Text, dest, channel)
-	resolveChannelRefs(&msg, dest)
+	resolveRefs(&msg, dest)
 
 	// if the parentID is still empty and we have a parentID set in the original message
 	// this means that we didn't find it in the cache so set it to a "msg-parent-not-found" constant

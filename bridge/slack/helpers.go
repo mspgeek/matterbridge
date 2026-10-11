@@ -154,12 +154,41 @@ func (b *Bslack) extractTopicOrPurpose(text string) (string, string) {
 func (b *Bslack) replaceMention(text string) string {
 	replaceFunc := func(match string) string {
 		userID := strings.Trim(match, "@<>")
-		if username := b.users.getUsername(userID); userID != "" {
-			return "@" + strings.ReplaceAll(username, " ", "")
+		user := b.users.getUser(userID)
+		if user == nil {
+			return match
 		}
-		return match
+		// Carry all of the user's names so the destination can link the
+		// right person without guessing where the name ends.
+		return helper.UserRef(append([]string{slackDisplayName(user)}, userNames(user)...)...)
 	}
 	return mentionRE.ReplaceAllStringFunc(text, replaceFunc)
+}
+
+// slackDisplayName is the name Slack shows for a user.
+func slackDisplayName(user *slack.User) string {
+	switch {
+	case user.Profile.DisplayName != "":
+		return user.Profile.DisplayName
+	case user.RealName != "":
+		return user.RealName
+	}
+	return user.Name
+}
+
+// UserMention returns the Slack mention of the user with these names (a user
+// reference from another platform).
+func (b *Bslack) UserMention(names []string) (string, bool) {
+	if b.users == nil {
+		return "", false
+	}
+	b.users.usersMutex.RLock()
+	id, ok := helper.ResolveUserByNames(b.users.nameIndex, names)
+	b.users.usersMutex.RUnlock()
+	if !ok {
+		return "", false
+	}
+	return "<@" + id + ">", true
 }
 
 // replaceOutgoingMentions turns "@name" from other platforms into a Slack

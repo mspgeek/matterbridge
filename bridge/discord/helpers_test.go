@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/mspgeek-community/matterbridge/bridge/helper"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,5 +34,28 @@ func TestChannelMention(t *testing.T) {
 	_, ok = b.ChannelMention("V-Hudu") // exact names only
 	assert.False(t, ok)
 	_, ok = b.ChannelMention("missing")
+	assert.False(t, ok)
+}
+
+func TestDiscordMentionsUseUserRefs(t *testing.T) {
+	b := &Bdiscord{
+		userMemberMap: map[string]*discordgo.Member{},
+		nickMemberMap: map[string]*discordgo.Member{},
+	}
+	b.addMemberLocked(&discordgo.Member{User: &discordgo.User{ID: "1", Username: "mendyg", GlobalName: "Mendy Green"}, Nick: "Mendy Green [MSPGeek]"})
+
+	// Incoming: a real Discord mention becomes a reference with all names.
+	m := &discordgo.MessageCreate{Message: &discordgo.Message{
+		Content:  "hey <@1> and <@!1>",
+		Mentions: []*discordgo.User{{ID: "1", Username: "mendyg", GlobalName: "Mendy Green"}},
+	}}
+	out := b.replaceMentionsWithUsernames(m)
+	assert.Equal(t, "hey @Mendy Green [MSPGeek] and @Mendy Green [MSPGeek]", helper.ReplaceUserRefs(out, nil))
+
+	// Outgoing: a reference from Slack resolves to the member by any name.
+	mention, ok := b.UserMention([]string{"Mendy Green [MSPGeek]", "mendy"})
+	assert.True(t, ok)
+	assert.Equal(t, "<@1>", mention)
+	_, ok = b.UserMention([]string{"stranger"})
 	assert.False(t, ok)
 }
