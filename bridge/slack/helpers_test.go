@@ -124,3 +124,14 @@ func TestReplaceURL(t *testing.T) {
 		assert.Equal(t, want, b.replaceURL(in), in)
 	}
 }
+
+func TestReplaceChannelByName(t *testing.T) {
+	logger := logrus.New()
+	logger.SetOutput(ioutil.Discard)
+	b := &Bslack{channels: newChannelManager(logrus.NewEntry(logger), nil)}
+	b.channels.channelsByID["C111"] = &slack.Channel{GroupConversation: slack.GroupConversation{Name: "v-hudu"}}
+
+	// Only real channel links are marked, by their exact Slack name.
+	assert.Equal(t, "see <#channel:v-hudu> now", b.replaceChannelByName("see <#C111|> now"))
+	assert.Equal(t, "typed #v-hudu stays", b.replaceChannelByName("typed #v-hudu stays"))
+}

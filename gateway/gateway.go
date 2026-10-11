@@ -14,6 +14,7 @@ import (
 	"github.com/kyokomi/emoji/v2"
 	"github.com/mspgeek-community/matterbridge/bridge"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
+	"github.com/mspgeek-community/matterbridge/bridge/helper"
 	"github.com/mspgeek-community/matterbridge/internal"
 
 	"github.com/sirupsen/logrus"
@@ -536,6 +537,50 @@ func slackForwardTS(msg *config.Message) string {
 	return ""
 }
 
+// channelMentioner is implemented by bridges that can link channels by name.
+type channelMentioner interface {
+	ChannelMention(name string) (string, bool)
+}
+
+// resolveChannelRefs replaces channel references in the text and file
+// comments of msg with dest's channel links, or "#name" when dest has no
+// channel with that exact name.
+func resolveChannelRefs(msg *config.Message, dest *bridge.Bridge) {
+	var resolve func(string) (string, bool)
+	if mentioner, ok := dest.Bridger.(channelMentioner); ok {
+		resolve = mentioner.ChannelMention
+	}
+	msg.Text = helper.ReplaceChannelRefs(msg.Text, resolve)
+
+	files := msg.Extra["file"]
+	needsCopy := false
+	for _, f := range files {
+		if fi, ok := f.(config.FileInfo); ok && helper.HasChannelRefs(fi.Comment) {
+			needsCopy = true
+			break
+		}
+	}
+	if !needsCopy {
+		return
+	}
+	// Extra is shared by all destinations of the message; copy before changing.
+	extra := make(map[string][]interface{}, len(msg.Extra))
+	for k, v := range msg.Extra {
+		extra[k] = v
+	}
+	newFiles := make([]interface{}, len(files))
+	for i, f := range files {
+		if fi, ok := f.(config.FileInfo); ok {
+			fi.Comment = helper.ReplaceChannelRefs(fi.Comment, resolve)
+			newFiles[i] = fi
+			continue
+		}
+		newFiles[i] = f
+	}
+	extra["file"] = newFiles
+	msg.Extra = extra
+}
+
 // discordChannelResolver is implemented by the discord bridge.
 type discordChannelResolver interface {
 	ChannelIDByName(name string) string
@@ -622,6 +667,7 @@ func (gw *Gateway) SendMessage(
 	}
 	// Add this block to replace <#TS:(random timestamp here)> with <#(RESULTSFROMGW.getDestMsgID)>
 	msg.Text = gw.ReplaceTSString(canonicalParentMsgID, canonicalThreadMsgID, msg.Text, dest, channel)
+	resolveChannelRefs(&msg, dest)
 
 	// if the parentID is still empty and we have a parentID set in the original message
 	// this means that we didn't find it in the cache so set it to a "msg-parent-not-found" constant

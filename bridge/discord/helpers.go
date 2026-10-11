@@ -166,6 +166,19 @@ func (b *Bdiscord) ChannelIDByName(name string) string {
 	return b.getChannelID(name)
 }
 
+// ChannelMention returns the mention of the channel named exactly name, for
+// channel references from other platforms.
+func (b *Bdiscord) ChannelMention(name string) (string, bool) {
+	b.channelsMutex.RLock()
+	defer b.channelsMutex.RUnlock()
+	for _, channel := range b.channels {
+		if channel.Name == name {
+			return "<#" + channel.ID + ">", true
+		}
+	}
+	return "", false
+}
+
 // GuildID returns the ID of the Discord server this bridge is connected to.
 func (b *Bdiscord) GuildID() string {
 	b.channelsMutex.RLock()

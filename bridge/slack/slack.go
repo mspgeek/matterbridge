@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/mspgeek-community/matterbridge/bridge"
 	"github.com/mspgeek-community/matterbridge/bridge/config"
@@ -34,8 +33,6 @@ type Bslack struct {
 	useChannelID bool
 
 	channels *channels
-	//discord Fields for channelauto replaceChannelByName
-	dChannels []*discordgo.Channel
 
 	users  *users
 	legacy bool
@@ -104,29 +101,6 @@ func (b *Bslack) Command(cmd string) string {
 	return ""
 }
 
-// loadDiscordChannels fetches the Discord channel list used to turn Slack
-// channel links into Discord channel mentions. It only uses the REST API: a
-// gateway login here was a second permanent Discord session per Slack
-// connect. Failure only disables the channel conversion.
-func (b *Bslack) loadDiscordChannels() {
-	token, server := b.GetString("DiscordToken"), b.GetString("DiscordServer")
-	if token == "" || server == "" {
-		return
-	}
-	dg, err := discordgo.New("Bot " + strings.TrimPrefix(token, "Bot "))
-	if err != nil {
-		b.Log.Warnf("Discord channel conversion disabled: %s", err)
-		return
-	}
-	channels, err := dg.GuildChannels(strings.TrimPrefix(server, "ID:"))
-	if err != nil {
-		b.Log.Warnf("Discord channel conversion disabled, could not list channels of DiscordServer %s: %s", server, err)
-		return
-	}
-	b.Log.Infof("Loaded %d Discord channels for channel conversion", len(channels))
-	b.dChannels = channels
-}
-
 func (b *Bslack) Connect() error {
 	b.RLock()
 	defer b.RUnlock()
@@ -146,7 +120,6 @@ func (b *Bslack) Connect() error {
 		b.rtm = b.sc.NewRTM()
 		go b.rtm.ManageConnection()
 		go b.handleSlack()
-		b.loadDiscordChannels()
 
 		return nil
 	}
