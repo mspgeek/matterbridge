@@ -43,16 +43,19 @@ func TestReplaceMentions(t *testing.T) {
 	}
 
 	cases := map[string]string{
-		"hi @John Smith how are you":  "hi <@U1> how are you", // longest match wins
-		"@John Smith, can you check?": "<@U1>, can you check?",
-		"@John: ping":                 "<@U2>: ping",
-		"(@JohnSmith)":                "(<@U1>)",
-		"mail bob@example.com":        "mail bob@example.com", // not a mention
-		"@nobody here":                "@nobody here",
-		"@here look":                  "@here look", // reserved
-		"@@John":                      "@@John",
-		"two @John and @John Smith":   "two <@U2> and <@U1>",
-		"":                            "",
+		"hi @John Smith how are you":           "hi <@U1> how are you", // longest match wins
+		"@John Smith, can you check?":          "<@U1>, can you check?",
+		"@John: ping":                          "<@U2>: ping",
+		"(@JohnSmith)":                         "(<@U1>)",
+		"mail bob@example.com":                 "mail bob@example.com", // not a mention
+		"https://www.youtube.com/@John":        "https://www.youtube.com/@John",
+		"see (https://medium.com/@John Smith)": "see (https://medium.com/@John Smith)",
+		"www.youtube.com/@John and @John":      "www.youtube.com/@John and <@U2>",
+		"@nobody here":                         "@nobody here",
+		"@here look":                           "@here look", // reserved
+		"@@John":                               "@@John",
+		"two @John and @John Smith":            "two <@U2> and <@U1>",
+		"":                                     "",
 	}
 	for in, want := range cases {
 		assert.Equal(t, want, ReplaceMentions(in, resolve), in)

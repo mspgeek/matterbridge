@@ -130,7 +130,7 @@ var (
 	channelRE        = regexp.MustCompile(`<#[a-zA-Z0-9]+\|(.+?)>`)
 	ChannelREAuto    = regexp.MustCompile(`<#[A-Z0-9]+\|>`)
 	variableRE       = regexp.MustCompile(`<!((?:subteam\^)?[a-zA-Z0-9]+)(?:\|@?(.+?))?>`)
-	urlRE            = regexp.MustCompile(`<([^<\|]+)\|([^>]+)>`)
+	urlRE            = regexp.MustCompile(`<([a-zA-Z][a-zA-Z0-9+.-]*:[^<>|\s]+)(?:\|([^>]*))?>`)
 	codeFenceRE      = regexp.MustCompile(`(?m)^` + "```" + `\w+$`)
 	topicOrPurposeRE = regexp.MustCompile(`(?s)(@.+) (cleared|set)(?: the)? channel (topic|purpose)(?:: (.*))?`)
 )
@@ -218,9 +218,30 @@ func (b *Bslack) replaceVariable(text string) string {
 	return text
 }
 
+// replaceURL converts Slack links, <url|label> and <url>, to Markdown. A link
+// whose label is just the URL becomes the plain URL so other platforms show
+// their normal link preview instead of a masked link.
 // @see https://api.slack.com/docs/message-formatting#linking_to_urls
 func (b *Bslack) replaceURL(text string) string {
-	return urlRE.ReplaceAllString(text, "[${2}](${1})")
+	return urlRE.ReplaceAllStringFunc(text, func(match string) string {
+		sub := urlRE.FindStringSubmatch(match)
+		url, label := sub[1], sub[2]
+		if label == "" || sameLink(url, label) {
+			return url
+		}
+		return "[" + label + "](" + url + ")"
+	})
+}
+
+// sameLink reports whether label only repeats url, as Slack does for links
+// typed into a message ("example.com/a" for "https://example.com/a").
+func sameLink(url, label string) bool {
+	norm := func(s string) string {
+		s = strings.TrimPrefix(strings.TrimPrefix(s, "https://"), "http://")
+		s = strings.TrimPrefix(s, "mailto:")
+		return strings.TrimSuffix(s, "/")
+	}
+	return norm(url) == norm(label)
 }
 
 func (b *Bslack) replaceb0rkedMarkDown(text string) string {

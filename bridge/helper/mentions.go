@@ -74,7 +74,7 @@ func ReplaceMentions(text string, resolve func(name string) (string, bool)) stri
 		i = at + 1
 		if at > 0 {
 			if prev, _ := utf8.DecodeLastRuneInString(text[:at]); prev == '@' || prev == '_' ||
-				unicode.IsLetter(prev) || unicode.IsNumber(prev) {
+				unicode.IsLetter(prev) || unicode.IsNumber(prev) || inURL(text[:at]) {
 				out.WriteByte('@')
 				continue
 			}
@@ -104,6 +104,14 @@ func ReplaceMentions(text string, resolve func(name string) (string, bool)) stri
 	}
 	out.WriteString(text[i:])
 	return out.String()
+}
+
+// inURL reports whether the text right before an "@" is part of a URL, as in
+// "https://www.youtube.com/@channel".
+func inURL(before string) bool {
+	start := strings.LastIndexFunc(before, unicode.IsSpace) + 1
+	token := strings.TrimLeft(before[start:], "<([")
+	return strings.Contains(token, "://") || strings.HasPrefix(strings.ToLower(token), "www.")
 }
 
 func truncateRunes(s string, n int) string {

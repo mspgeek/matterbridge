@@ -105,3 +105,22 @@ func TestPopulateRefreshFlagClearedOnError(t *testing.T) {
 		t.Fatal("populateUsers blocked after a failed refresh")
 	}
 }
+
+func TestReplaceURL(t *testing.T) {
+	b := &Bslack{}
+	cases := map[string]string{
+		"see <https://example.com/a|example.com/a> now":   "see https://example.com/a now",
+		"<https://example.com/|https://example.com>":      "https://example.com/",
+		"<https://example.com>":                           "https://example.com",
+		"<https://example.com/docs|the docs>":             "[the docs](https://example.com/docs)",
+		"<https://x.com/?a=1&amp;b=2|x.com/?a=1&amp;b=2>": "https://x.com/?a=1&amp;b=2",
+		"<mailto:bob@example.com|bob@example.com>":        "mailto:bob@example.com",
+		"<tel:+15551234|call us>":                         "[call us](tel:+15551234)",
+		"two <https://a.com|a.com> and <https://b.com|B>": "two https://a.com and [B](https://b.com)",
+		"<#C123|general> and <@U123> stay":                "<#C123|general> and <@U123> stay",
+		"<!here> stays":                                   "<!here> stays",
+	}
+	for in, want := range cases {
+		assert.Equal(t, want, b.replaceURL(in), in)
+	}
+}
