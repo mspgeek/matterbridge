@@ -164,8 +164,15 @@ func (r *Router) handleReceive() {
 		r.handleEventFailure(&msg)
 		r.handleEventRejoinChannels(&msg)
 
-		// Set message protocol based on the account it came from
-		msg.Protocol = r.getBridge(msg.Account).Protocol
+		// Set message protocol based on the account it came from. A bridge
+		// removed after failing to start may still have running goroutines
+		// sending messages; drop those.
+		srcBridge := r.getBridge(msg.Account)
+		if srcBridge == nil {
+			r.logger.Debugf("Dropping message from removed bridge %s", msg.Account)
+			continue
+		}
+		msg.Protocol = srcBridge.Protocol
 
 		filesHandled := false
 		for _, gw := range r.Gateways {
