@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bwmarrin/discordgo"
 	"github.com/d5/tengo/v2"
 	"github.com/d5/tengo/v2/stdlib"
 	lru "github.com/hashicorp/golang-lru"
@@ -596,32 +595,46 @@ func (gw *Gateway) ReplaceTSString(
 	return Text
 }
 
-// Creates a new function that uses the discord.go client to feed it a string(e.g. 'general') and returns an id for that string (e.g. 123567878).
-// the function is named "findDiscordChannel"
-func (gw *Gateway) findDiscordChannel(name string, dest *bridge.Bridge) string {
-	token := dest.GetString("Token")
-	discordConnection, err2 := discordgo.New("Bot " + token)
-	if err2 != nil {
-		fmt.Println("Error connecting")
-		gw.logger.Errorf("Error connecting to discord: %s", err2)
-	}
-	err3 := discordConnection.Open()
-	if err3 != nil {
-		fmt.Println("Error opening discord connection")
-		gw.logger.Errorf("Error connecting to discord: %s", err3)
-	}
-	guildId := dest.GetString("Server")
-	dChannels, err4 := discordConnection.GuildChannels(guildId)
-	if err4 != nil {
-		fmt.Println("Error Listing discord channels. Channel auto remap wont work.")
-		gw.logger.Errorf("Error connecting to discord: %s", err4)
-	}
-	for _, channel := range dChannels {
-		if channel.Name == name {
-			return channel.ID
+// slackForwardTS returns the timestamp of the original message when msg is a
+// Slack forward, or "" otherwise.
+func slackForwardTS(msg *config.Message) string {
+	for _, attachment := range msg.Extra["slack_attachment"] {
+		if attachments, ok := attachment.([]slack.Attachment); ok {
+			for _, attach := range attachments {
+				if attach.FromURL != "" {
+					return attach.Ts.String()
+				}
+			}
 		}
 	}
 	return ""
+}
+
+// discordChannelResolver is implemented by the discord bridge.
+type discordChannelResolver interface {
+	ChannelIDByName(name string) string
+	GuildID() string
+}
+
+// discordMessageURL returns a link to the Discord copy of the message stored
+// under canonicalID, or to the Discord channel when that copy is unknown.
+// It uses the running Discord bridge; it never opens a gateway connection.
+func (gw *Gateway) discordMessageURL(canonicalID string, dest *bridge.Bridge, channel *config.ChannelInfo) string {
+	resolver, ok := dest.Bridger.(discordChannelResolver)
+	if !ok {
+		return ""
+	}
+	guildID := resolver.GuildID()
+	channelID := resolver.ChannelIDByName(channel.Name)
+	if guildID == "" || channelID == "" {
+		gw.logger.Debugf("Cannot build Discord link for channel %s", channel.Name)
+		return ""
+	}
+	url := "https://discord.com/channels/" + guildID + "/" + channelID
+	if msgID := gw.getDestMsgID(canonicalID, dest, channel); msgID != "" {
+		url += "/" + msgID
+	}
+	return url
 }
 
 // SendMessage sends a message (with specified parentID) to the channel on the selected
@@ -682,36 +695,15 @@ func (gw *Gateway) SendMessage(
 	if msg.ParentID == "" && rmsg.ParentID != "" {
 		msg.ParentID = config.ParentIDNotFound
 	}
-	var fromURL string
-	if extra, ok := msg.Extra["slack_attachment"]; ok {
-		for _, attachment := range extra {
-			if a, ok := attachment.([]slack.Attachment); ok {
-				for _, attach := range a {
-					if attach.FromURL != "" {
-						fromURL = attach.Ts.String()
-						break
-					}
-
-				}
-			}
-		}
-		//a fwd always has a source of slack.
-		gw.logger.Debugf("--------------")
-		gw.logger.Debugf("Looking for discord channel.")
-		discordChannel := gw.findDiscordChannel(channel.Name, dest)
-		gw.logger.Debugf("using discord channel %s", discordChannel)
-		msg.ThreadID = gw.getDestMsgID("slack "+fromURL, dest, channel)
-		gw.logger.Debugf("Thread ID is %s and fromURL is %s", msg.ThreadID, fromURL)
-		replyURL := "https://discord.com/channels/" + dest.GetString("Server") + "/" + discordChannel
-		if msg.ThreadID != "" {
-			replyURL += "/" + strings.Replace(msg.ThreadID, dest.Protocol+" ", "", 1)
-		}
-		msg.Text = msg.Text + "\n> *In reply to:* " + replyURL
-
-	} else {
-		msg.ThreadID = gw.getDestMsgID(canonicalThreadMsgID, dest, channel)
-		if msg.ThreadID == "" {
-			msg.ThreadID = strings.Replace(canonicalThreadMsgID, dest.Protocol+" ", "", 1)
+	msg.ThreadID = gw.getDestMsgID(canonicalThreadMsgID, dest, channel)
+	if msg.ThreadID == "" {
+		msg.ThreadID = strings.Replace(canonicalThreadMsgID, dest.Protocol+" ", "", 1)
+	}
+	// A message forwarded inside Slack carries the original as an attachment
+	// with FromURL set. Point Discord readers at the bridged original.
+	if fromTS := slackForwardTS(&msg); fromTS != "" {
+		if replyURL := gw.discordMessageURL("slack "+fromTS, dest, channel); replyURL != "" {
+			msg.Text += "\n> *In reply to:* " + replyURL
 		}
 	}
 

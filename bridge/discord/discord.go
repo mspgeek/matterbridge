@@ -139,8 +139,8 @@ func (b *Bdiscord) connect() error {
 
 	// Try and find this account's guild, and populate channels.
 	// Reset first, Connect is called again on every reconnect.
-	b.guildID = ""
 	b.channelsMutex.Lock()
+	b.guildID = ""
 	for _, guild := range guilds {
 		// Skip, if the server name does not match the visible name or the ID
 		if guild.Name != serverName && guild.ID != serverName {

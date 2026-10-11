@@ -93,6 +93,18 @@ func (b *Bdiscord) getChannelID(name string) string {
 	return ""
 }
 
+// ChannelIDByName returns the Discord channel ID for a configured channel name.
+func (b *Bdiscord) ChannelIDByName(name string) string {
+	return b.getChannelID(name)
+}
+
+// GuildID returns the ID of the Discord server this bridge is connected to.
+func (b *Bdiscord) GuildID() string {
+	b.channelsMutex.RLock()
+	defer b.channelsMutex.RUnlock()
+	return b.guildID
+}
+
 func (b *Bdiscord) getCategoryChannelID(name string) string {
 	b.channelsMutex.RLock()
 	defer b.channelsMutex.RUnlock()
