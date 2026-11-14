@@ -36,6 +36,10 @@ type Transmitter struct {
 
 	mutex sync.RWMutex
 
+	// ThreadTitle names a thread started on a message; nil uses the
+	// message text as is.
+	ThreadTitle func(*discordgo.Message) string
+
 	Log *log.Entry
 }
 
@@ -78,13 +82,12 @@ func (t *Transmitter) Send(channelID string, ParentID string, params *discordgo.
 				return nil, fmt.Errorf("parent message not found: %w", err)
 			}
 
-			var content string
-			if len(parentMsg.Content) == 0 {
+			content := parentMsg.Content
+			if t.ThreadTitle != nil {
+				content = t.ThreadTitle(parentMsg)
+			}
+			if content == "" {
 				content = "Replied in thread"
-			} else if len(parentMsg.Content) > 100 {
-				content = parentMsg.Content[:100]
-			} else {
-				content = parentMsg.Content
 			}
 			t.Log.Debugf("Trying to create Message Thread. Channel not found.")
 			thread, err := t.session.MessageThreadStart(channelID, ParentID, content, 60)

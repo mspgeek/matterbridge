@@ -210,6 +210,7 @@ func (b *Bdiscord) connect() error {
 	// Initialise webhook management
 	b.transmitter = transmitter.New(b.c, b.guildID, "matterbridge", b.useAutoWebhooks)
 	b.transmitter.Log = b.Log
+	b.transmitter.ThreadTitle = b.threadTitle
 
 	var webhookChannelIDs []string
 	for _, channel := range b.Channels {

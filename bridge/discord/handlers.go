@@ -175,6 +175,12 @@ func (b *Bdiscord) relayMessage(m *discordgo.MessageCreate, edit bool) {
 		return
 	}
 
+	// Only relay what people write. Discord also posts system messages such as
+	// "thread created", "thread renamed", pins and boosts.
+	if !relayedMessageTypes[m.Type] {
+		return
+	}
+
 	// not relay our own messages
 	if m.Author.Username == b.nick {
 		return
